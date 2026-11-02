@@ -1,0 +1,21 @@
+# 本地实测原始数据（含内网地址、MAC 等，不入库）
+docs/m0-raw-*.txt
+*.har
+private/
+
+# 构建产物
+build/
+bin/
+dist/
+cmd/epo-gui/build/
+cmd/epo-gui/frontend/node_modules/
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.log
+tmp/
