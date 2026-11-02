@@ -14,6 +14,7 @@ import (
 
 	"github.com/love486love/epo-2026/internal/config"
 	"github.com/love486love/epo-2026/internal/logx"
+	"github.com/love486love/epo-2026/internal/netinfo"
 	"github.com/love486love/epo-2026/internal/portal"
 	"github.com/love486love/epo-2026/internal/portal/drcom"
 	"github.com/love486love/epo-2026/internal/probe"
@@ -102,6 +103,14 @@ func cmdDoctor(args []string) error {
 		prof.ID, prof.DisplayName, prof.Network.SSID, prof.Portal.Host, prof.Portal.Port)
 	fmt.Printf("carrier=%s probes=%q %q\n",
 		prof.Login.Carrier, prof.Network.PrimaryProbe, prof.Network.BackupProbe)
+
+	fmt.Println("== 本机网络 ==")
+	if ni, err := netinfo.Get(); err != nil {
+		fmt.Printf("  读取失败: %v\n", err)
+	} else {
+		fmt.Printf("  ssid=%q ipv4=%s gateway=%s mac=%s randomMAC=%v\n",
+			ni.SSID, ni.IPv4, ni.Gateway, ni.MAC, ni.RandomMAC)
+	}
 
 	c := probe.New()
 	report := func(label, probeURL string, allowed []string) {
