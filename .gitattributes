@@ -1,0 +1,7 @@
+# 统一换行符，避免 Windows 检出后 gofmt 判定全部未格式化
+* text=auto
+*.go text eol=lf
+*.mod text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.md text eol=lf

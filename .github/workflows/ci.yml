@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.21"
-          cache: true
+          cache: false # 本项目无第三方依赖，不需要模块缓存
       - name: format
         run: |
           $files = gofmt -l .
