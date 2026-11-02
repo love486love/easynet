@@ -30,11 +30,11 @@ func (s State) String() string {
 // Endpoint 描述一个门户的入口。全部为协议无关字段，
 // 网关私有参数放在 Extra 中，避免污染通用接口。
 type Endpoint struct {
-	Host      string            // 门户主机，例如 172.16.121.9
-	Port      int               // 门户端口，例如 801
-	LoginPath string            // 登录路径，例如 /eportal/portal/login
-	LogoutPath string           // 登出路径（未验证，当前不使用）
-	Extra     map[string]string // 网关附加参数
+	Host       string            // 门户主机，例如 172.16.121.9
+	Port       int               // 门户端口，例如 801
+	LoginPath  string            // 登录路径，例如 /eportal/portal/login
+	LogoutPath string            // 登出路径（未验证，当前不使用）
+	Extra      map[string]string // 网关附加参数
 }
 
 // Credential 是用户凭据。仅在内存中存在，不得写日志。

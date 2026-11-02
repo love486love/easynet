@@ -70,7 +70,7 @@ func Default() Profile {
 		Login: LoginConfig{
 			Carrier: "cmcc",
 			ExtraParams: map[string]string{
-				"jsVersion":    "4.2.1",
+				"jsVersion":     "4.2.1",
 				"terminal_type": "1",
 				"login_method":  "1",
 				"lang":          "zh-cn",

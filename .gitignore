@@ -16,6 +16,9 @@ cmd/epo-gui/frontend/node_modules/
 .DS_Store
 Thumbs.db
 
+# 本地工具链（便携版 Go，用于格式化与本地验证）
+.tools/
+
 # 临时文件
 *.log
 tmp/
