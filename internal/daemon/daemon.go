@@ -20,6 +20,8 @@ type Deps struct {
 	Sleep  func(context.Context, time.Duration) error
 	Now    func() time.Time
 	Log    *slog.Logger
+	// OnVerified 在"登录成功且探针复核在线"后调用，用于记录 TOFU 网关 MAC。
+	OnVerified func()
 }
 
 const (
@@ -140,6 +142,9 @@ func Run(ctx context.Context, d Deps) error {
 		lastLoginAt = d.Now()
 		wasOnline = true
 		consecutiveFails = 0
+		if d.OnVerified != nil {
+			d.OnVerified()
+		}
 		d.Log.Info("登录成功，进入在线态")
 	}
 }

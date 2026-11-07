@@ -117,8 +117,8 @@ func cmdDoctor(args []string) error {
 	if ni, err := netinfo.Get(); err != nil {
 		fmt.Printf("  读取失败: %v\n", err)
 	} else {
-		fmt.Printf("  ssid=%q ipv4=%s gateway=%s mac=%s randomMAC=%v\n",
-			ni.SSID, ni.IPv4, ni.Gateway, ni.MAC, ni.RandomMAC)
+		fmt.Printf("  ssid=%q ipv4=%s gateway=%s gwMAC=%s mac=%s randomMAC=%v\n",
+			ni.SSID, ni.IPv4, ni.Gateway, ni.GatewayMAC, ni.MAC, ni.RandomMAC)
 	}
 
 	c := probe.New()
