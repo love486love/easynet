@@ -263,6 +263,33 @@ func (a *App) Logs() []string {
 	return lines
 }
 
+// ExportLog 把完整日志复制到用户选择的位置。
+func (a *App) ExportLog(dest string) (string, error) {
+	if dest == "" {
+		return "", fmt.Errorf("未选择保存位置")
+	}
+	data, err := os.ReadFile(filepath.Join(a.dir, "logs", "epo.log"))
+	if err != nil {
+		return "", fmt.Errorf("读取日志失败: %w", err)
+	}
+	if err := os.WriteFile(dest, data, 0o644); err != nil {
+		return "", fmt.Errorf("写入文件失败: %w", err)
+	}
+	return "日志已导出", nil
+}
+
+// OpenLogsDir 用资源管理器打开日志目录。
+func (a *App) OpenLogsDir() (string, error) {
+	dir := filepath.Join(a.dir, "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	if err := exec.Command("explorer.exe", dir).Start(); err != nil {
+		return "", fmt.Errorf("打开目录失败: %w", err)
+	}
+	return "已打开日志目录", nil
+}
+
 // networkHint 把探针的底层错误翻译成普通用户能理解的提示。
 // 原始错误仍由 Detail 字段展示，供排查使用。
 func networkHint(err error, ssid string) string {
