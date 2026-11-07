@@ -18,6 +18,7 @@ import (
 	"github.com/love486love/epo-2026/internal/session"
 	"github.com/love486love/epo-2026/internal/state"
 	"github.com/love486love/epo-2026/internal/trust"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App 是绑定到前端的后端对象。
@@ -274,19 +275,31 @@ func (a *App) MarkTutorialDone() error {
 	return os.WriteFile(filepath.Join(a.dir, "tutorial_done"), []byte("1"), 0o644)
 }
 
-// ExportLog 把完整日志复制到用户选择的位置。
-func (a *App) ExportLog(dest string) (string, error) {
-	if dest == "" {
-		return "", fmt.Errorf("未选择保存位置")
+// SaveLogAs 弹出系统保存对话框并导出完整日志。
+// 返回空字符串表示用户取消。
+func (a *App) SaveLogAs() (string, error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("界面尚未就绪，请稍后重试")
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "导出运行日志",
+		DefaultFilename: "epo-log-" + time.Now().Format("2006-01-02-15-04-05") + ".txt",
+		Filters:         []runtime.FileFilter{{DisplayName: "文本文件 (*.txt)", Pattern: "*.txt"}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("打开保存对话框失败: %w", err)
+	}
+	if path == "" {
+		return "", nil
 	}
 	data, err := os.ReadFile(filepath.Join(config.LogDir(), "epo.log"))
 	if err != nil {
 		return "", fmt.Errorf("读取日志失败: %w", err)
 	}
-	if err := os.WriteFile(dest, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return "", fmt.Errorf("写入文件失败: %w", err)
 	}
-	return "日志已导出", nil
+	return "日志已导出: " + path, nil
 }
 
 // OpenLogsDir 用资源管理器打开日志目录。

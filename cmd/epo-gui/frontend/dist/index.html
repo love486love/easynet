@@ -727,19 +727,12 @@ function setLogMsg(text, ok) {
 
 async function exportLogs() {
   if (!App()) return;
-  if (!RT() || !RT().SaveFileDialog) { setLogMsg('当前环境不支持保存对话框', false); return; }
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   try {
-    const path = await RT().SaveFileDialog({
-      Title: '导出运行日志',
-      DefaultFilename: 'epo-log-' + stamp + '.txt',
-      Filters: [{ DisplayName: '文本文件 (*.txt)', Pattern: '*.txt' }],
-    });
-    if (!path) return;
-    const msg = await App().ExportLog(path);
+    const msg = await App().SaveLogAs();
+    if (!msg) { setLogMsg('已取消导出'); return; }
     setLogMsg(msg, true);
   } catch (e) {
-    setLogMsg(String(e), false);
+    setLogMsg('导出失败：' + e + '。可改用「打开日志目录」手动复制日志文件。', false);
   }
 }
 
