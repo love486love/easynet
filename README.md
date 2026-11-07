@@ -4,7 +4,7 @@
 [![ci](https://github.com/love486love/easynet/actions/workflows/ci.yml/badge.svg)](https://github.com/love486love/easynet/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-江西农业大学校园网（JXAU-Stu）自动认证客户端，Windows 10 / 11 x64。
+**江西农业大学（江农 / JXAU）校园网自动认证客户端**：面向 `JXAU-Stu` 的 Dr.COM ePortal 自动登录，Windows 10 / 11 x64。
 
 连上校园 Wi-Fi 后自动完成 Dr.COM ePortal 网页认证，断线自动重连；关闭窗口后仍在后台工作，无需再打开浏览器输入账号密码。
 
@@ -57,6 +57,13 @@
 - **安装版**：在「设置 → 应用 → 已安装的应用」里卸载，或运行安装目录的 `unins000.exe`
 
 手动步骤：托盘「退出」→ 关闭「开机自启」→ 删除程序目录 → 删除 `%LOCALAPPDATA%\easynet`
+
+## 路线图
+
+- [x] Windows 客户端（v0.x）
+- [ ] **Android 客户端**：计划在 **v1.0 之前**推出
+
+Android 版会复用同一套 ePortal 认证与判定逻辑，目前尚未开始实现。
 
 ## 常见问题
 
