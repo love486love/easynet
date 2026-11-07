@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/love486love/epo-2026/internal/portal"
+	"github.com/love486love/easynet/internal/portal"
 )
 
 // Evidence 是判定所需的最小证据集。

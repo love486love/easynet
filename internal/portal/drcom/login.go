@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/love486love/epo-2026/internal/portal"
+	"github.com/love486love/easynet/internal/portal"
 )
 
 const (

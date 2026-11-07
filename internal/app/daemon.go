@@ -7,23 +7,23 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/love486love/epo-2026/internal/config"
-	"github.com/love486love/epo-2026/internal/creds"
-	"github.com/love486love/epo-2026/internal/daemon"
-	"github.com/love486love/epo-2026/internal/guard"
-	"github.com/love486love/epo-2026/internal/instance"
-	"github.com/love486love/epo-2026/internal/logx"
-	"github.com/love486love/epo-2026/internal/netinfo"
-	"github.com/love486love/epo-2026/internal/portal"
-	"github.com/love486love/epo-2026/internal/portal/drcom"
-	"github.com/love486love/epo-2026/internal/probe"
-	"github.com/love486love/epo-2026/internal/session"
-	"github.com/love486love/epo-2026/internal/state"
-	"github.com/love486love/epo-2026/internal/trust"
+	"github.com/love486love/easynet/internal/config"
+	"github.com/love486love/easynet/internal/creds"
+	"github.com/love486love/easynet/internal/daemon"
+	"github.com/love486love/easynet/internal/guard"
+	"github.com/love486love/easynet/internal/instance"
+	"github.com/love486love/easynet/internal/logx"
+	"github.com/love486love/easynet/internal/netinfo"
+	"github.com/love486love/easynet/internal/portal"
+	"github.com/love486love/easynet/internal/portal/drcom"
+	"github.com/love486love/easynet/internal/probe"
+	"github.com/love486love/easynet/internal/session"
+	"github.com/love486love/easynet/internal/state"
+	"github.com/love486love/easynet/internal/trust"
 )
 
 // RunDaemon 启动常驻守护，直到 ctx 取消、收到停止请求或进程被结束。
-// `epo.exe daemon` 与 `epo-daemon.exe` 两个入口都调用本函数，行为完全一致。
+// 界面里「守护」开关打开时拉起 `easynet.exe --daemon`，开机自启也指向同一条命令。
 func RunDaemon(profilePath string) error {
 	prof, err := LoadProfile(profilePath)
 	if err != nil {
@@ -50,7 +50,7 @@ func RunDaemon(profilePath string) error {
 		return fmt.Errorf("读取凭据失败（请先在界面保存账号）: %w", err)
 	}
 
-	lock, ok, err := instance.Acquire(`Local\epo-daemon`)
+	lock, ok, err := instance.Acquire(`Local\easynet`)
 	if err != nil {
 		return err
 	}

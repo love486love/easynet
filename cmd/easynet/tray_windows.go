@@ -12,20 +12,12 @@ import (
 	"unsafe"
 
 	"fyne.io/systray"
-	"github.com/love486love/epo-2026/internal/config"
-	"github.com/love486love/epo-2026/internal/state"
+
+	"github.com/love486love/easynet/internal/config"
+	"github.com/love486love/easynet/internal/state"
 )
 
-var (
-	trayUser32       = syscall.NewLazyDLL("user32.dll")
-	procFindWindowW  = trayUser32.NewProc("FindWindowW")
-	procPostMessageW = trayUser32.NewProc("PostMessageW")
-)
-
-const (
-	guiWindowTitle = "epo · 校园网自动认证"
-	wmClose        = 0x0010
-)
+const wmClose = 0x0010
 
 //go:embed icons/tray.ico
 var trayIcon []byte
@@ -37,13 +29,13 @@ func runTray() {
 
 func onReady() {
 	systray.SetIcon(trayIcon)
-	systray.SetTitle("epo")
+	systray.SetTitle("easynet")
 	systray.SetTooltip("校园网自动认证守护")
 
 	mStatus := systray.AddMenuItem("检测中…", "守护状态")
 	mStatus.Disable()
 	systray.AddSeparator()
-	mOpen := systray.AddMenuItem("打开界面", "打开 epo 图形界面")
+	mOpen := systray.AddMenuItem("打开界面", "打开 easynet 图形界面")
 	mQuit := systray.AddMenuItem("退出", "停止守护并退出")
 
 	go func() {
@@ -70,10 +62,10 @@ func onExit() {
 	closeGUIWindow()
 }
 
-// closeGUIWindow 用窗口标题找到 epo-gui 主窗口并发送 WM_CLOSE。
+// closeGUIWindow 用窗口标题找到主窗口并发送 WM_CLOSE。
 // 界面没打开时 FindWindow 返回 0，直接忽略。
 func closeGUIWindow() {
-	title, _ := syscall.UTF16PtrFromString(guiWindowTitle)
+	title, _ := syscall.UTF16PtrFromString(appWindowTitle)
 	hwnd, _, _ := procFindWindowW.Call(0, uintptr(unsafe.Pointer(title)))
 	if hwnd == 0 {
 		return
@@ -103,15 +95,15 @@ func refreshStatus(item *systray.MenuItem) {
 	}
 }
 
-// openGUI 拉起同目录下的 epo-gui.exe；不存在时静默忽略。
+// openGUI 拉起本 exe 的界面模式。已有窗口时新实例会自动退出并置前旧窗口。
 func openGUI() {
 	exe, err := os.Executable()
 	if err != nil {
 		return
 	}
-	path := filepath.Join(filepath.Dir(exe), "epo-gui.exe")
-	if _, err := os.Stat(path); err != nil {
+	cmd := exec.Command(exe)
+	cmd.Dir = filepath.Dir(exe)
+	if err := cmd.Start(); err != nil {
 		return
 	}
-	_ = exec.Command(path).Start()
 }

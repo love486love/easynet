@@ -3,12 +3,12 @@ package probe
 import (
 	"testing"
 
-	"github.com/love486love/epo-2026/internal/portal"
+	"github.com/love486love/easynet/internal/portal"
 )
 
 const (
-	schoolProbe = "http://www.jxau.edu.cn/?epo=1"
-	baiduProbe  = "http://www.baidu.com/?epo=1"
+	schoolProbe = "http://www.jxau.edu.cn/?easynet=1"
+	baiduProbe  = "http://www.baidu.com/?easynet=1"
 	schoolExp   = "jxau.edu.cn"
 )
 
@@ -42,7 +42,7 @@ func TestJudge(t *testing.T) {
 			expect:  "baidu.com",
 			ev: Evidence{
 				StatusCode: 302,
-				Location:   "https://www.baidu.com/?epo=1",
+				Location:   "https://www.baidu.com/?easynet=1",
 			},
 			want: portal.StateOnline,
 		},

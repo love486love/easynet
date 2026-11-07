@@ -1,4 +1,4 @@
-// Package state 在 %LOCALAPPDATA%\epo 下维护守护进程的运行快照。
+// Package state 在 %LOCALAPPDATA%\easynet 下维护守护进程的运行快照。
 // GUI 通过该文件判断守护是否在跑，并通过 stop.flag 请求优雅退出，
 // 避免跨进程杀进程带来的权限与误杀问题。
 package state

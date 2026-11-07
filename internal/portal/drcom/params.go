@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/love486love/epo-2026/internal/portal"
+	"github.com/love486love/easynet/internal/portal"
 )
 
 // 默认运营商后缀。移动为本地实测值；电信/联通取自同类 ePortal 项目实测，

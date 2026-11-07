@@ -10,4 +10,4 @@
 
 ## 其他
 
-`epo.iss`、`uninstall.bat` 为本项目原创，随仓库 MIT 许可发布。
+`easynet.iss`、`uninstall.bat` 为本项目原创，随仓库 MIT 许可发布。

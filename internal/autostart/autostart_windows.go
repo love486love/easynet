@@ -2,7 +2,7 @@
 
 // Package autostart 通过 HKCU\Run 实现开机自启。
 // 选注册表而非计划任务：无管理员权限、无路径空格/中文的 /TR 截断问题；
-// 配合 windowsgui 子系统的 epo-daemon.exe 可做到完全无窗口。
+// 配合 windowsgui 子系统与 --daemon 参数可做到完全无窗口。
 package autostart
 
 import (
@@ -21,12 +21,16 @@ func hidden(name string, args ...string) *exec.Cmd {
 
 const (
 	runKey    = `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
-	valueName = "epo-daemon"
+	valueName = "easynet"
 )
 
-// Enable 写入自启项，值为带引号的 exe 路径。
-func Enable(exe string) error {
-	cmd := hidden("reg", "add", runKey, "/v", valueName, "/t", "REG_SZ", "/d", `"`+exe+`"`, "/f")
+// Enable 写入自启项，值为带引号的 exe 路径，可附加参数（例如 --daemon）。
+func Enable(exe string, args ...string) error {
+	value := `"` + exe + `"`
+	for _, arg := range args {
+		value += " " + arg
+	}
+	cmd := hidden("reg", "add", runKey, "/v", valueName, "/t", "REG_SZ", "/d", value, "/f")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("写入自启失败: %v %s", err, strings.TrimSpace(string(out)))
 	}

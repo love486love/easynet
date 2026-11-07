@@ -57,7 +57,7 @@ func TestStopFlagLifecycle(t *testing.T) {
 }
 
 func TestWriteCreatesDir(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "nested", "epo")
+	dir := filepath.Join(t.TempDir(), "nested", "easynet")
 	if err := Write(dir, Snapshot{State: "unknown"}); err != nil {
 		t.Fatalf("应自动创建目录: %v", err)
 	}

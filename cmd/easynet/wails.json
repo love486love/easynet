@@ -1,16 +1,16 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "epo",
-  "outputfilename": "epo-gui",
+  "name": "easynet",
+  "outputfilename": "easynet",
   "frontend:install": "",
   "frontend:build": "",
   "author": {
     "name": "love486love"
   },
   "info": {
-    "companyName": "epo",
-    "productName": "epo",
-    "productVersion": "0.1.0",
+    "companyName": "easynet",
+    "productName": "easynet",
+    "productVersion": "0.2.0",
     "copyright": "MIT",
     "comments": "江西农业大学校园网自动认证"
   }

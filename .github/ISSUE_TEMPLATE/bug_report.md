@@ -15,13 +15,13 @@ labels: bug
 
 **环境**
 - Windows 版本（`winver`）：
-- epo 版本（`epo.exe version`）：
+- easynet 版本（关于页显示）：
 - 校园网 SSID：
 - 是否能正常上网（未登录时能否打开学校门户）：
 
 **日志**
 <!--
-粘贴 %LOCALAPPDATA%\epo\logs\epo.log 最近 20 行。
+粘贴 %LOCALAPPDATA%\easynet\logs\easynet.log 最近 20 行。
 日志已做脱敏，但仍请勿粘贴密码或完整学号。
 -->
 
