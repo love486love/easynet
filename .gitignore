@@ -13,6 +13,10 @@ bin/
 /dist/
 cmd/epo-gui/build/
 cmd/epo-gui/frontend/node_modules/
+# go build ./... 在包目录生成的副产物
+/epo.exe
+/epo-daemon.exe
+cmd/epo-gui/epo-gui.exe
 
 # 编辑器与系统
 .vscode/

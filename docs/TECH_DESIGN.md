@@ -872,3 +872,14 @@ TOFU 首次信任值已落地，后续登录若网关 MAC 变化会被拒绝并�
 **剩余**：无。托盘已在 `epo-daemon.exe` 内实现（见下）。
 
 **托盘（同日落地）**：`fyne.io/systray v1.12.2`（纯 Go，Windows 走 syscall，无 CGO）；图标 `cmd/epo-daemon/icons/tray.ico`（16/32/48 三种尺寸，PNG 压缩 ICO，由脚本按同一视觉生成）。菜单包含状态行（每 2 秒按快照刷新"在线 · 守护中 / 未认证 · 守护中"）、打开界面、退出；点退出时先把 `stop.flag` 写给守护，再结束消息循环，主进程最多等 8 秒完成收尾。守护自身异常退出时托盘自动消失，不留孤儿图标。
+
+---
+
+## 29. 阶段 2：健壮性
+
+| 项 | 实现 | 验证 |
+|---|---|---|
+| GUI 单实例 | `Local\epo-gui` 命名互斥体；第二个实例启动时用 `FindWindowW` 找到已有窗口并 `SW_RESTORE` + 置前，然后退出 | 连续启动两次：存活进程 **1 个**，第二个立即退出 |
+| 日志轮转 | `internal/logx`：单文件超 5 MB 轮转为 `epo.log.1`，保留 3 份 | 代码已有，无需改动 |
+| WebView2 检测 | 查 `EdgeUpdate\Clients\{F3017226-…}`（HKLM、WOW6432Node、HKCU 三处）；缺失时弹窗提示改用 `epo.exe` 或 `epo gui` | 本机已安装，正常放行 |
+| 守护重复启动 | GUI 返回「守护已在运行」；daemon 侧 `Local\epo-daemon` 互斥体兜底 | 已有 |
