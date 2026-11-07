@@ -24,4 +24,4 @@ jobs:
       - name: test
         run: go test ./... -count=1 -timeout 120s
       - name: build
-        run: go build -tags desktop,production,browser -ldflags "-s -w -H=windowsgui" -o easynet.exe ./cmd/easynet
+        run: go build -trimpath -tags desktop,production,browser -ldflags "-s -w -H=windowsgui" -o easynet.exe ./cmd/easynet
