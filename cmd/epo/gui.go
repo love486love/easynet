@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/love486love/epo-2026/internal/app"
 	"github.com/love486love/epo-2026/internal/autostart"
 	"github.com/love486love/epo-2026/internal/config"
 	"github.com/love486love/epo-2026/internal/creds"
@@ -45,7 +46,7 @@ func cmdGui(args []string) error {
 	noOpen := fs.Bool("no-open", false, "不自动打开浏览器")
 	_ = fs.Parse(args)
 
-	prof, err := loadProfile(*profilePath)
+	prof, err := app.LoadProfile(*profilePath)
 	if err != nil {
 		return err
 	}

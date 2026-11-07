@@ -860,3 +860,31 @@ TOFU 首次信任值已落地，后续登录若网关 MAC 变化会被拒绝并�
 **深浅双主题**：两套 CSS 变量（`#0d1117` 深色 / `#f6f8fa` 浅色），标题栏右侧太阳/月亮按钮切换；选择写入 `localStorage`，首次启动按 `prefers-color-scheme` 跟随系统；切换时调用 `WindowSetBackgroundColour` 同步窗口底色，避免无边框窗口在着色边缘露出异色。
 
 **注意**：`.gitignore` 中的 `dist/` 必须写成 `/dist/`，否则会连带忽略 `cmd/epo-gui/frontend/dist/index.html`，导致仓库缺少界面源码。
+
+---
+
+## 28. M3 收尾：守护进程与界面联动
+
+**发现的缺陷**：文档规划 `cmd/epo-daemon` 入口，但仓库里没有该目录。`HKCU\Run` 指向的 `epo-daemon.exe` 启动时不带子命令，落到 `usage()` 分支后直接退出——**开机自启实际完全失效**，且因为是 windowsgui 子系统，用户看不到任何报错。
+
+**改动**
+
+| 项 | 实现 |
+|---|---|
+| 入口拆分 | 新增 `internal/app`：`RunDaemon` / `LoadProfile`；`cmd/epo daemon`（控制台）与 `cmd/epo-daemon`（windowsgui）共用同一实现 |
+| 状态共享 | 新增 `internal/state`：写 `%LOCALAPPDATA%\epo\state.json`（临时文件 + rename 原子落盘），字段 `state / message / pid / updated_at` |
+| 运行判定 | GUI 以"快照更新不超过 20 秒且 `state != stopped`"判定守护在跑，不依赖进程枚举 |
+| 优雅停止 | GUI 写 `stop.flag`，守护在每轮循环开头检查后正常退出并落 `state=stopped`；**不做跨进程强杀**，避免权限与误杀风险 |
+| 界面 | 概览页新增守护条：运行中/未运行 + 状态圆点 + 启停按钮；绑定 `Daemon()` / `StartDaemon()` / `StopDaemon()` |
+
+**验证（2026-11-07 真机）**
+
+```
+启动 epo-daemon.exe 6 秒后 → {"state":"online","pid":27516,...}
+写入 stop.flag 后 5 秒内 → {"state":"stopped","message":"守护已停止",...}
+日志：收到停止请求，退出守护 → 守护退出
+```
+
+界面同步验证：守护运行中时概览页显示"后台守护运行中 / 已自动维持在线，关闭窗口不影响"，按钮变为"停止守护"。
+
+**剩余**：托盘图标（ADR-008 要求运行在 daemon 内），待引入 `fyne.io/systray`（纯 Go，无 CGO）。

@@ -8,10 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/love486love/epo-2026/internal/config"
+	"github.com/love486love/epo-2026/internal/app"
 	"github.com/love486love/epo-2026/internal/logx"
 	"github.com/love486love/epo-2026/internal/netinfo"
 	"github.com/love486love/epo-2026/internal/portal"
@@ -79,7 +78,7 @@ func cmdStatus(args []string) error {
 	profilePath := fs.String("profile", "", "profile 文件路径")
 	_ = fs.Parse(args)
 
-	prof, err := loadProfile(*profilePath)
+	prof, err := app.LoadProfile(*profilePath)
 	if err != nil {
 		return err
 	}
@@ -102,7 +101,7 @@ func cmdDoctor(args []string) error {
 	profilePath := fs.String("profile", "", "profile 文件路径")
 	_ = fs.Parse(args)
 
-	prof, err := loadProfile(*profilePath)
+	prof, err := app.LoadProfile(*profilePath)
 	if err != nil {
 		return err
 	}
@@ -172,7 +171,7 @@ func cmdLogin(args []string) error {
 		return fmt.Errorf("必须提供 -cred 凭据文件（M1 暂不支持交互输入，DPAPI 存储将在 M2 提供）")
 	}
 
-	prof, err := loadProfile(*profilePath)
+	prof, err := app.LoadProfile(*profilePath)
 	if err != nil {
 		return err
 	}
@@ -214,17 +213,6 @@ func cmdLogin(args []string) error {
 }
 
 // ---------- 公共逻辑 ----------
-
-func loadProfile(path string) (config.Profile, error) {
-	if path != "" {
-		return config.Load(path)
-	}
-	dir, err := config.UserDir()
-	if err != nil {
-		return config.Default(), nil
-	}
-	return config.Load(filepath.Join(dir, "config.json"))
-}
 
 func readCredential(path string) (portal.Credential, error) {
 	data, err := os.ReadFile(path)

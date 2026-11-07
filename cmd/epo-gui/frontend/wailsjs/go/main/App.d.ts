@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function Autostart():Promise<main.AutostartState>;
 
+export function Daemon():Promise<main.DaemonInfo>;
+
 export function Login():Promise<string>;
 
 export function Logs():Promise<Array<string>>;
@@ -12,4 +14,8 @@ export function SaveCred(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function SetAutostart(arg1:boolean):Promise<string>;
 
+export function StartDaemon():Promise<string>;
+
 export function Status():Promise<main.Status>;
+
+export function StopDaemon():Promise<string>;

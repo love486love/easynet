@@ -1,0 +1,153 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"path/filepath"
+
+	"github.com/love486love/epo-2026/internal/config"
+	"github.com/love486love/epo-2026/internal/creds"
+	"github.com/love486love/epo-2026/internal/daemon"
+	"github.com/love486love/epo-2026/internal/guard"
+	"github.com/love486love/epo-2026/internal/instance"
+	"github.com/love486love/epo-2026/internal/logx"
+	"github.com/love486love/epo-2026/internal/netinfo"
+	"github.com/love486love/epo-2026/internal/portal"
+	"github.com/love486love/epo-2026/internal/portal/drcom"
+	"github.com/love486love/epo-2026/internal/probe"
+	"github.com/love486love/epo-2026/internal/session"
+	"github.com/love486love/epo-2026/internal/state"
+	"github.com/love486love/epo-2026/internal/trust"
+)
+
+// RunDaemon 启动常驻守护，直到 ctx 取消、收到停止请求或进程被结束。
+// `epo.exe daemon` 与 `epo-daemon.exe` 两个入口都调用本函数，行为完全一致。
+func RunDaemon(profilePath string) error {
+	prof, err := LoadProfile(profilePath)
+	if err != nil {
+		return err
+	}
+	dir, err := config.UserDir()
+	if err != nil {
+		return err
+	}
+
+	// 先建日志，再读凭据：否则早期失败不会留下任何可排查的痕迹。
+	logger, closeLog, err := logx.New(filepath.Join(dir, "logs"))
+	if err != nil {
+		return err
+	}
+	defer closeLog()
+
+	// 上一轮残留的停止标记会让本次启动立刻退出，这里先清掉。
+	_ = state.ClearStop(dir)
+
+	secret, err := creds.Load(dir)
+	if err != nil {
+		logger.Error("读取凭据失败", "err", err)
+		return fmt.Errorf("读取凭据失败（请先在界面保存账号）: %w", err)
+	}
+
+	lock, ok, err := instance.Acquire(`Local\epo-daemon`)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		logger.Info("已有守护进程在运行，本次退出")
+		return nil
+	}
+	defer lock.Release()
+
+	exitMessage := "守护已退出"
+	defer func() {
+		_ = state.Write(dir, state.Snapshot{State: "stopped", Message: exitMessage, PID: os.Getpid()})
+		_ = state.ClearStop(dir)
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	cred := portal.Credential{
+		Username: secret.Username,
+		Password: secret.Password,
+		Carrier:  secret.Carrier,
+	}
+	if cred.Carrier == "" {
+		cred.Carrier = prof.Login.Carrier
+	}
+
+	trusted, err := trust.Load(dir)
+	if err != nil {
+		exitMessage = "读取网关信任列表失败"
+		return fmt.Errorf("读取网关信任列表失败: %w", err)
+	}
+	lastGatewayMAC := ""
+
+	loginFn := func(ctx context.Context, ev probe.Evidence) (portal.Result, error) {
+		ni, niErr := netinfo.Get()
+		if niErr != nil {
+			return portal.Result{Code: 6, Message: niErr.Error()}, niErr
+		}
+
+		ep, warns := session.EndpointFromEvidence(prof, ev)
+		for _, w := range warns {
+			logger.Warn("网关参数告警", "detail", w)
+		}
+
+		// 四项校验：SSID / 门户白名单 / 随机 MAC（仅告警）/ 网关 MAC 信任。
+		// 信任列表为空时只记录不阻断，避免首次使用被卡死。
+		if _, gerr := guard.Check(guard.Input{
+			TargetSSID:   prof.Network.SSID,
+			CurrentSSID:  ni.SSID,
+			PortalHost:   ep.Host,
+			AllowedHosts: []string{prof.Portal.Host},
+			GatewayMAC:   ni.GatewayMAC,
+			TrustedMACs:  trusted,
+			RandomMAC:    ni.RandomMAC,
+		}); gerr != nil {
+			return portal.Result{Code: 6, Message: gerr.Error()}, gerr
+		}
+
+		lastGatewayMAC = ni.GatewayMAC
+		client := drcom.NewWithSuffixes(prof.Login.CarrierSuffixes)
+		return client.Login(ctx, ep, cred)
+	}
+
+	logger.Info("守护启动", "profile", prof.ID, "ssid", prof.Network.SSID)
+	_ = state.Write(dir, state.Snapshot{State: "unknown", Message: "守护已启动", PID: os.Getpid()})
+	exitMessage = "守护已停止"
+
+	runErr := daemon.Run(ctx, daemon.Deps{
+		Policy: prof.Policy,
+		Probe: func(ctx context.Context) (portal.State, probe.Evidence, error) {
+			st, ev, perr := session.ProbeOnce(ctx, prof)
+			msg := ""
+			if perr != nil {
+				msg = perr.Error()
+			}
+			_ = state.Write(dir, state.Snapshot{State: st.String(), Message: msg, PID: os.Getpid()})
+			return st, ev, perr
+		},
+		Login: loginFn,
+		Log:   logger,
+		Stop:  func() bool { return state.StopRequested(dir) },
+		OnVerified: func() {
+			if lastGatewayMAC == "" {
+				logger.Warn("网关 MAC 为空，跳过信任记录")
+				return
+			}
+			updated, err := trust.Remember(dir, lastGatewayMAC)
+			if err != nil {
+				logger.Warn("记录网关 MAC 失败", "err", err)
+				return
+			}
+			trusted = updated
+			logger.Info("已记录网关 MAC", "mac", lastGatewayMAC)
+		},
+	})
+
+	logger.Info("守护退出")
+	return runErr
+}

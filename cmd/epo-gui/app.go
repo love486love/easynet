@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/love486love/epo-2026/internal/portal"
 	"github.com/love486love/epo-2026/internal/portal/drcom"
 	"github.com/love486love/epo-2026/internal/session"
+	"github.com/love486love/epo-2026/internal/state"
 	"github.com/love486love/epo-2026/internal/trust"
 )
 
@@ -43,6 +45,14 @@ type Status struct {
 type AutostartState struct {
 	Enabled bool   `json:"enabled"`
 	Value   string `json:"value"`
+}
+
+// DaemonInfo 是守护进程的当前状态（由 state.json 快照推断）。
+type DaemonInfo struct {
+	Running   bool      `json:"running"`
+	State     string    `json:"state"`
+	Message   string    `json:"message"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // NewApp 读取 profile 与用户目录。凭据缺失不视为错误，界面里再引导填写。
@@ -185,4 +195,67 @@ func (a *App) Logs() []string {
 		lines = lines[len(lines)-40:]
 	}
 	return lines
+}
+
+// Daemon 返回后台守护的运行状态。超过 20 秒没有快照更新视为未运行。
+func (a *App) Daemon() DaemonInfo {
+	snap, err := state.Read(a.dir)
+	if err != nil {
+		return DaemonInfo{}
+	}
+	return DaemonInfo{
+		Running:   snap.State != "stopped" && time.Since(snap.UpdatedAt) <= 20*time.Second,
+		State:     snap.State,
+		Message:   snap.Message,
+		UpdatedAt: snap.UpdatedAt,
+	}
+}
+
+// StartDaemon 拉起 epo-daemon.exe。守护是独立进程，关闭界面后仍在运行。
+func (a *App) StartDaemon() (string, error) {
+	if a.Daemon().Running {
+		return "守护已在运行", nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(filepath.Dir(exe), "epo-daemon.exe")
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("未找到 epo-daemon.exe，请与 epo-gui.exe 放在同一目录")
+	}
+	if err := state.ClearStop(a.dir); err != nil {
+		return "", err
+	}
+	cmd := exec.Command(path)
+	cmd.Dir = filepath.Dir(path)
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("启动守护失败: %w", err)
+	}
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(250 * time.Millisecond)
+		if a.Daemon().Running {
+			return "守护已启动", nil
+		}
+	}
+	return "已启动，但尚未收到状态快照，请查看运行日志", nil
+}
+
+// StopDaemon 写停止标记让守护优雅退出，避免跨进程强杀。
+func (a *App) StopDaemon() (string, error) {
+	if !a.Daemon().Running {
+		return "守护未在运行", nil
+	}
+	if err := state.RequestStop(a.dir); err != nil {
+		return "", err
+	}
+	deadline := time.Now().Add(12 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(300 * time.Millisecond)
+		if !a.Daemon().Running {
+			return "守护已停止", nil
+		}
+	}
+	return "已发送停止请求，守护将在下一轮检查后退出", nil
 }
