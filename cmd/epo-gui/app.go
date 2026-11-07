@@ -56,6 +56,13 @@ type DaemonInfo struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// AccountInfo 是已保存账号的可展示信息（不含密码）。
+type AccountInfo struct {
+	Username string `json:"username"`
+	Carrier  string `json:"carrier"`
+	Saved    bool   `json:"saved"`
+}
+
 // NewApp 读取 profile 与用户目录。凭据缺失不视为错误，界面里再引导填写。
 func NewApp() *App {
 	prof := config.Default()
@@ -155,7 +162,29 @@ func (a *App) SaveCred(username, password, carrier string) (string, error) {
 	if err := creds.Save(a.dir, creds.Secret{Username: username, Password: password, Carrier: carrier}); err != nil {
 		return "", err
 	}
-	return "凭据已加密保存", nil
+	return "凭据已加密保存（重启守护后生效）", nil
+}
+
+// Account 返回已保存的账号信息；密码不会返回给前端。
+func (a *App) Account() AccountInfo {
+	s, err := creds.Load(a.dir)
+	if err != nil {
+		return AccountInfo{}
+	}
+	return AccountInfo{Username: s.Username, Carrier: s.Carrier, Saved: true}
+}
+
+// DeleteAccount 删除本地加密凭据；守护若在运行则同时请求停止，
+// 否则它会继续使用内存里的旧凭据。
+func (a *App) DeleteAccount() (string, error) {
+	if err := creds.Delete(a.dir); err != nil {
+		return "", err
+	}
+	if a.Daemon().Running {
+		_ = state.RequestStop(a.dir)
+		return "账号已删除，守护已停止", nil
+	}
+	return "账号已删除", nil
 }
 
 // Autostart 返回当前开机自启状态。
@@ -206,7 +235,7 @@ func networkHint(err error, ssid string) string {
 	msg := err.Error()
 	switch {
 	case ssid == "":
-		return "未连接 Wi-Fi，请先在系统里连接校园网"
+		return "请先在系统里打开 Wi-Fi 并选择校园网"
 	case strings.Contains(msg, "no such host"):
 		return "网络未连通：域名解析失败，请检查 Wi-Fi 是否正常"
 	case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline exceeded"):

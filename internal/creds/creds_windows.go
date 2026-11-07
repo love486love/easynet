@@ -122,3 +122,12 @@ func Load(dir string) (Secret, error) {
 	}
 	return s, nil
 }
+
+// Delete 删除本地凭据文件；文件不存在时视为成功。
+func Delete(dir string) error {
+	err := os.Remove(Path(dir))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
