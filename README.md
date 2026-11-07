@@ -15,6 +15,7 @@ epo login -cred c.json        # 登录一次（凭据文件不入库）
 epo save-cred -cred c.json    # 用 DPAPI 加密保存凭据
 epo daemon          # 常驻守护：掉线自动重连
 epo autostart install|remove|status   # 开机自启（HKCU\Run，无需管理员）
+epo gui             # 打开本地图形界面（浏览器，令牌鉴权）
 ```
 
 ## 特性（规划）
