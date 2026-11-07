@@ -116,6 +116,7 @@
   .dot.offline { background: var(--bad); box-shadow: 0 0 0 4px rgba(207,34,46,.15); }
   .state-text { font-size: 20px; font-weight: 600; line-height: 1.2; }
   .state-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tech { font-size: 10.5px; color: var(--faint); margin-top: 3px; word-break: break-all; display: none; }
   .hero-right { display: flex; gap: 8px; }
 
   .btn {
@@ -246,6 +247,7 @@
             <div>
               <div class="state-text" id="stateText">检查中…</div>
               <div class="state-sub" id="stateSub">正在探测网络状态</div>
+              <div class="tech" id="stateDetail"></div>
             </div>
           </div>
           <div class="hero-right">
@@ -386,7 +388,13 @@ function renderState(s) {
   dot.className = 'dot ' + (s.state || '');
   if (s.state === 'online') { text.textContent = '已连接'; sub.textContent = '网络认证正常'; }
   else if (s.state === 'offline') { text.textContent = '未认证'; sub.textContent = '需要登录校园网'; }
-  else { text.textContent = '状态未知'; sub.textContent = s.message || '无法判断网络状态'; }
+  else { text.textContent = s.ssid ? '状态未知' : '未连接 Wi-Fi'; sub.textContent = s.message || '无法判断网络状态'; }
+
+  const detail = document.getElementById('stateDetail');
+  if (detail) {
+    detail.textContent = s.detail || '';
+    detail.style.display = s.detail ? 'block' : 'none';
+  }
 
   document.getElementById('ssid').textContent = s.ssid || '—';
   document.getElementById('ipv4').textContent = s.ipv4 || '—';
@@ -436,7 +444,7 @@ async function toggleDaemon() {
 async function refresh() {
   if (!App()) { setMsg('后端未就绪', false); return; }
   try { renderState(await App().Status()); }
-  catch (e) { setMsg('刷新失败: ' + e, false); }
+  catch (e) { setMsg('刷新失败，请稍后重试', false); }
   await loadLogs();
   await loadDaemon();
 }

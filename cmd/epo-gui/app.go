@@ -39,6 +39,7 @@ type Status struct {
 	HasCred    bool   `json:"has_cred"`
 	HasTrust   bool   `json:"has_trust"`
 	Message    string `json:"message"`
+	Detail     string `json:"detail"`
 }
 
 // AutostartState 是自启状态。
@@ -87,7 +88,8 @@ func (a *App) Status() Status {
 	state, _, err := session.ProbeOnce(ctx, a.prof)
 	if err != nil {
 		st.State = "unknown"
-		st.Message = err.Error()
+		st.Message = networkHint(err, st.SSID)
+		st.Detail = err.Error()
 	} else {
 		st.State = state.String()
 	}
@@ -113,7 +115,8 @@ func (a *App) Login() (string, error) {
 
 	state, ev, err := session.ProbeOnce(ctx, a.prof)
 	if err != nil {
-		return "", fmt.Errorf("探针失败: %w", err)
+		ni, _ := netinfo.Get()
+		return "", fmt.Errorf("%s", networkHint(err, ni.SSID))
 	}
 	if state == portal.StateOnline {
 		return "当前已在线，无需登录", nil
@@ -195,6 +198,24 @@ func (a *App) Logs() []string {
 		lines = lines[len(lines)-40:]
 	}
 	return lines
+}
+
+// networkHint 把探针的底层错误翻译成普通用户能理解的提示。
+// 原始错误仍由 Detail 字段展示，供排查使用。
+func networkHint(err error, ssid string) string {
+	msg := err.Error()
+	switch {
+	case ssid == "":
+		return "未连接 Wi-Fi，请先在系统里连接校园网"
+	case strings.Contains(msg, "no such host"):
+		return "网络未连通：域名解析失败，请检查 Wi-Fi 是否正常"
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline exceeded"):
+		return "网络无响应，请稍后重试"
+	case strings.Contains(msg, "connection refused"):
+		return "网络被拦截，请尝试打开学校门户完成认证"
+	default:
+		return "暂时无法判断网络状态，请稍后点刷新"
+	}
 }
 
 // Daemon 返回后台守护的运行状态。超过 20 秒没有快照更新视为未运行。
