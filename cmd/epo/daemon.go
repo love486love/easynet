@@ -1,26 +1,15 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 
+	"github.com/love486love/epo-2026/internal/app"
 	"github.com/love486love/epo-2026/internal/autostart"
 	"github.com/love486love/epo-2026/internal/config"
 	"github.com/love486love/epo-2026/internal/creds"
-	"github.com/love486love/epo-2026/internal/daemon"
-	"github.com/love486love/epo-2026/internal/guard"
-	"github.com/love486love/epo-2026/internal/instance"
-	"github.com/love486love/epo-2026/internal/logx"
-	"github.com/love486love/epo-2026/internal/netinfo"
-	"github.com/love486love/epo-2026/internal/portal"
-	"github.com/love486love/epo-2026/internal/portal/drcom"
-	"github.com/love486love/epo-2026/internal/probe"
-	"github.com/love486love/epo-2026/internal/session"
-	"github.com/love486love/epo-2026/internal/trust"
 )
 
 // cmdSaveCred 把 JSON 凭据用 DPAPI 加密后写入本地目录。
@@ -48,116 +37,12 @@ func cmdSaveCred(args []string) error {
 	return nil
 }
 
-// cmdDaemon 启动常驻守护，直到 Ctrl+C 或进程被结束。
+// cmdDaemon 启动常驻守护，直到 Ctrl+C 或 GUI 请求停止。
 func cmdDaemon(args []string) error {
 	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
 	profilePath := fs.String("profile", "", "profile 文件路径")
 	_ = fs.Parse(args)
-
-	prof, err := loadProfile(*profilePath)
-	if err != nil {
-		return err
-	}
-	dir, err := config.UserDir()
-	if err != nil {
-		return err
-	}
-
-	// 先建日志，再读凭据：否则早期失败不会留下任何可排查的痕迹。
-	logger, closeLog, err := logx.New(filepath.Join(dir, "logs"))
-	if err != nil {
-		return err
-	}
-	defer closeLog()
-
-	secret, err := creds.Load(dir)
-	if err != nil {
-		logger.Error("读取凭据失败", "err", err)
-		return fmt.Errorf("读取凭据失败（请先运行 epo save-cred）: %w", err)
-	}
-
-	lock, ok, err := instance.Acquire(`Local\epo-daemon`)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		fmt.Println("已有守护进程在运行，本次退出")
-		return nil
-	}
-	defer lock.Release()
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	cred := portal.Credential{
-		Username: secret.Username,
-		Password: secret.Password,
-		Carrier:  secret.Carrier,
-	}
-	if cred.Carrier == "" {
-		cred.Carrier = prof.Login.Carrier
-	}
-
-	trusted, err := trust.Load(dir)
-	if err != nil {
-		return fmt.Errorf("读取网关信任列表失败: %w", err)
-	}
-	lastGatewayMAC := ""
-
-	loginFn := func(ctx context.Context, ev probe.Evidence) (portal.Result, error) {
-		ni, niErr := netinfo.Get()
-		if niErr != nil {
-			return portal.Result{Code: 6, Message: niErr.Error()}, niErr
-		}
-
-		ep, warns := session.EndpointFromEvidence(prof, ev)
-		for _, w := range warns {
-			logger.Warn("网关参数告警", "detail", w)
-		}
-
-		// 四项校验：SSID / 门户白名单 / 随机 MAC（仅告警）/ 网关 MAC 信任。
-		// 信任列表为空时只记录不阻断，避免首次使用被卡死。
-		if _, gerr := guard.Check(guard.Input{
-			TargetSSID:   prof.Network.SSID,
-			CurrentSSID:  ni.SSID,
-			PortalHost:   ep.Host,
-			AllowedHosts: []string{prof.Portal.Host},
-			GatewayMAC:   ni.GatewayMAC,
-			TrustedMACs:  trusted,
-			RandomMAC:    ni.RandomMAC,
-		}); gerr != nil {
-			return portal.Result{Code: 6, Message: gerr.Error()}, gerr
-		}
-
-		lastGatewayMAC = ni.GatewayMAC
-		client := drcom.NewWithSuffixes(prof.Login.CarrierSuffixes)
-		return client.Login(ctx, ep, cred)
-	}
-
-	logger.Info("守护启动", "profile", prof.ID, "ssid", prof.Network.SSID)
-
-	runErr := daemon.Run(ctx, daemon.Deps{
-		Policy: prof.Policy,
-		Probe:  func(ctx context.Context) (portal.State, probe.Evidence, error) { return session.ProbeOnce(ctx, prof) },
-		Login:  loginFn,
-		Log:    logger,
-		OnVerified: func() {
-			if lastGatewayMAC == "" {
-				logger.Warn("网关 MAC 为空，跳过信任记录")
-				return
-			}
-			updated, err := trust.Remember(dir, lastGatewayMAC)
-			if err != nil {
-				logger.Warn("记录网关 MAC 失败", "err", err)
-				return
-			}
-			trusted = updated
-			logger.Info("已记录网关 MAC", "mac", lastGatewayMAC)
-		},
-	})
-
-	logger.Info("守护退出")
-	return runErr
+	return app.RunDaemon(*profilePath)
 }
 
 // cmdAutostart 管理开机自启（HKCU\Run，无需管理员权限）。

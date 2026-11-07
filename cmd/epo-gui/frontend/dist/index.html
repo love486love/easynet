@@ -128,6 +128,16 @@
   .btn.primary:hover { background: #2b8cff; border-color: #2b8cff; }
   .btn:disabled { opacity: .55; cursor: default; }
 
+  .daemon-bar {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 11px 14px; margin-bottom: 12px;
+  }
+  .daemon-bar .dot { width: 9px; height: 9px; box-shadow: none; flex: 0 0 9px; }
+  .daemon-text { flex: 1; min-width: 0; }
+  .daemon-title { font-size: 13px; font-weight: 600; }
+  .daemon-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+
   .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px; }
   .label { color: var(--muted); font-size: 11.5px; }
@@ -230,6 +240,15 @@
             <button class="btn primary" id="loginBtn" onclick="doLogin()">立即登录</button>
             <button class="btn" onclick="refresh()">刷新</button>
           </div>
+        </div>
+
+        <div class="daemon-bar">
+          <div class="dot offline" id="dDot"></div>
+          <div class="daemon-text">
+            <div class="daemon-title" id="dTitle">后台守护未运行</div>
+            <div class="daemon-sub" id="dSub">关闭窗口后不会自动重连</div>
+          </div>
+          <button class="btn" id="dBtn" onclick="toggleDaemon()">启动守护</button>
         </div>
 
         <div class="grid">
@@ -366,11 +385,43 @@ function renderState(s) {
     (s.has_cred ? '已保存' : '未保存') + ' / ' + (s.has_trust ? '已信任网关' : '未记录');
 }
 
+async function loadDaemon() {
+  if (!App()) return;
+  try {
+    const d = await App().Daemon();
+    const running = !!d.running;
+    const dot = document.getElementById('dDot');
+    dot.className = 'dot ' + (running ? (d.state === 'online' ? 'online' : '') : 'offline');
+    document.getElementById('dTitle').textContent = running ? '后台守护运行中' : '后台守护未运行';
+    let sub = running ? '已自动维持在线，关闭窗口不影响' : '关闭窗口后不会自动重连';
+    if (running && d.message) sub = d.message;
+    document.getElementById('dSub').textContent = sub;
+    document.getElementById('dBtn').textContent = running ? '停止守护' : '启动守护';
+  } catch (e) { }
+}
+
+async function toggleDaemon() {
+  if (!App()) return;
+  const btn = document.getElementById('dBtn');
+  btn.disabled = true;
+  setMsg('正在切换守护状态…');
+  try {
+    const d = await App().Daemon();
+    const msg = d.running ? await App().StopDaemon() : await App().StartDaemon();
+    setMsg(msg, true);
+  } catch (e) {
+    setMsg(String(e), false);
+  }
+  btn.disabled = false;
+  await loadDaemon();
+}
+
 async function refresh() {
   if (!App()) { setMsg('后端未就绪', false); return; }
   try { renderState(await App().Status()); }
   catch (e) { setMsg('刷新失败: ' + e, false); }
   await loadLogs();
+  await loadDaemon();
 }
 
 async function loadLogs() {
@@ -442,6 +493,7 @@ async function toggleAutostart() {
 refresh();
 loadAutostart();
 setInterval(loadLogs, 5000);
+setInterval(loadDaemon, 5000);
 </script>
 </body>
 </html>

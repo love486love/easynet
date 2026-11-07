@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-          cache: false # 本项目无第三方依赖，不需要模块缓存
+          cache: true
       - name: format
         run: |
           $files = gofmt -l .
@@ -24,4 +24,6 @@ jobs:
       - name: test
         run: go test ./... -count=1 -timeout 120s
       - name: build
-        run: go build -o epo.exe ./cmd/epo
+        run: |
+          go build -ldflags "-s -w" -o epo.exe ./cmd/epo
+          go build -ldflags "-s -w -H=windowsgui" -o epo-daemon.exe ./cmd/epo-daemon

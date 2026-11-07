@@ -20,6 +20,8 @@ type Deps struct {
 	Sleep  func(context.Context, time.Duration) error
 	Now    func() time.Time
 	Log    *slog.Logger
+	// Stop 返回 true 时安全退出循环，用于响应 GUI 的停止请求。
+	Stop func() bool
 	// OnVerified 在"登录成功且探针复核在线"后调用，用于记录 TOFU 网关 MAC。
 	OnVerified func()
 }
@@ -53,6 +55,10 @@ func Run(ctx context.Context, d Deps) error {
 
 	for {
 		if err := ctx.Err(); err != nil {
+			return nil
+		}
+		if d.Stop != nil && d.Stop() {
+			d.Log.Info("收到停止请求，退出守护")
 			return nil
 		}
 

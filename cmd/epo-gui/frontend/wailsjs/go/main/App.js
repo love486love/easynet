@@ -6,6 +6,10 @@ export function Autostart() {
   return window['go']['main']['App']['Autostart']();
 }
 
+export function Daemon() {
+  return window['go']['main']['App']['Daemon']();
+}
+
 export function Login() {
   return window['go']['main']['App']['Login']();
 }
@@ -22,6 +26,14 @@ export function SetAutostart(arg1) {
   return window['go']['main']['App']['SetAutostart'](arg1);
 }
 
+export function StartDaemon() {
+  return window['go']['main']['App']['StartDaemon']();
+}
+
 export function Status() {
   return window['go']['main']['App']['Status']();
+}
+
+export function StopDaemon() {
+  return window['go']['main']['App']['StopDaemon']();
 }
