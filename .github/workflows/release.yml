@@ -27,7 +27,7 @@ jobs:
         run: |
           go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
           $wails = Join-Path (go env GOPATH) "bin/wails.exe"
-          & $wails build -platform windows/amd64 -webview2 browser -ldflags "-s -w"
+          & $wails build -platform windows/amd64 -webview2 browser -trimpath -ldflags "-s -w"
 
       - name: Package
         shell: pwsh
