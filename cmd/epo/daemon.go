@@ -62,8 +62,16 @@ func cmdDaemon(args []string) error {
 		return err
 	}
 
+	// 先建日志，再读凭据：否则早期失败不会留下任何可排查的痕迹。
+	logger, closeLog, err := logx.New(filepath.Join(dir, "logs"))
+	if err != nil {
+		return err
+	}
+	defer closeLog()
+
 	secret, err := creds.Load(dir)
 	if err != nil {
+		logger.Error("读取凭据失败", "err", err)
 		return fmt.Errorf("读取凭据失败（请先运行 epo save-cred）: %w", err)
 	}
 
@@ -76,12 +84,6 @@ func cmdDaemon(args []string) error {
 		return nil
 	}
 	defer lock.Release()
-
-	logger, closeLog, err := logx.New(filepath.Join(dir, "logs"))
-	if err != nil {
-		return err
-	}
-	defer closeLog()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

@@ -50,13 +50,18 @@ try {
         $carrier = Read-Host "运营商 cmcc/ctcc/cucc/campus（回车=cmcc）"
         if ([string]::IsNullOrWhiteSpace($carrier)) { $carrier = 'cmcc' }
 
-        $tmp = Join-Path $env:TEMP 'epo-cred.json'
+        # 临时文件放在 build 下（已 gitignore），不用 %TEMP%，避免明文落到工作区外
+        $tmp = Join-Path (Split-Path -Parent $Epo) 'epo-cred.tmp.json'
         $payload = [ordered]@{ username = $user; password = $plain; carrier = $carrier } | ConvertTo-Json
-        Set-Content -Path $tmp -Value $payload -Encoding UTF8
+        [IO.File]::WriteAllText($tmp, $payload, [Text.UTF8Encoding]::new($false))
 
-        & $Epo save-cred -cred $tmp | Out-Null
+        & $Epo save-cred -cred $tmp 2>&1 | ForEach-Object { "    $_" }
+        $saveCode = $LASTEXITCODE
         Remove-Item $tmp -Force -ErrorAction SilentlyContinue
         Remove-Variable plain
+
+        if ($saveCode -ne 0) { throw "保存凭据失败（退出码 $saveCode）" }
+        if (-not (Test-Path $secret)) { throw "凭据文件未生成：$secret" }
 
         Ok "凭据已用 DPAPI 加密保存到 $secret"
     } else {
@@ -78,7 +83,12 @@ try {
     Start-Sleep -Seconds 3
 
     if ($proc.HasExited) {
-        Warn "守护启动后立即退出，请查看日志：$logFile"
+        Warn "守护启动后立即退出（退出码 $($proc.ExitCode)）"
+        if (Test-Path $logFile) {
+            Get-Content $logFile -Tail 5 | ForEach-Object { "    $_" }
+        } else {
+            "    （未生成日志，说明在创建日志前就失败了）"
+        }
         return
     }
     Ok "守护已启动（PID $($proc.Id)）"
