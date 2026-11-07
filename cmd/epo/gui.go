@@ -258,7 +258,7 @@ func (g *guiServer) handleCred(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *guiServer) handleLogs(w http.ResponseWriter, r *http.Request) {
-	path := filepath.Join(g.dir, "logs", "epo.log")
+	path := filepath.Join(config.LogDir(), "epo.log")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"lines": []string{}})
