@@ -837,3 +837,20 @@ TOFU 首次信任值已落地，后续登录若网关 MAC 变化会被拒绝并�
 ```
 
 **后续**：网络允许时可再包一层 Wails 外壳复用同一套前端；托盘仍按 v0.6 设计放在 daemon 侧。
+
+## 27. M3 原生窗口（Wails 落地）
+
+网络恢复后确认：`api.github.com` 可达、`goproxy.cn` 返回 200、本机已有 `D:\Node\node.exe`，因此可以真正上 Wails。
+
+| 项 | 取值 | 说明 |
+|---|---|---|
+| Wails | **v2.10.2** | v2.17 要求 Go 1.26，本机 1.21 无法满足；v2.10.2 兼容 Go 1.22 |
+| 模块代理 | `goproxy.cn` | `proxy.golang.org` 在校园网超时 |
+| 前端 | 纯 HTML/CSS/JS，无框架 | `wails.json` 的 `frontend:install` / `frontend:build` 置空，**不依赖 Node/npm** |
+| 绑定 | `App.Status / Login / SaveCred / Autostart / SetAutostart / Logs` | 进程内调用，不起本地 HTTP 服务 |
+| 产物 | `epo-gui.exe` **9.39 MB** | `-webview2 browser`，复用系统 WebView2 |
+| 验证 | 进程启动后存活 4 秒 | 窗口正常创建 |
+
+**与 §26 的关系**：§26 的本地 Web 界面保留为**备选**（无 WebView2 时可用）；原生窗口为标准形态。
+
+**工程影响**：`go.mod` 升到 `go 1.22.0` 并引入 Wails 依赖；`internal/session` 抽出 CLI 与 GUI 共用的探针/参数解析逻辑，避免两套实现漂移。

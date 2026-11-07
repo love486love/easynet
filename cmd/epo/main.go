@@ -7,10 +7,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/love486love/epo-2026/internal/config"
@@ -19,6 +17,7 @@ import (
 	"github.com/love486love/epo-2026/internal/portal"
 	"github.com/love486love/epo-2026/internal/portal/drcom"
 	"github.com/love486love/epo-2026/internal/probe"
+	"github.com/love486love/epo-2026/internal/session"
 )
 
 const version = "0.1.0-dev"
@@ -88,7 +87,7 @@ func cmdStatus(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	state, _, err := probeOnce(ctx, prof)
+	state, _, err := session.ProbeOnce(ctx, prof)
 	if err != nil {
 		return fmt.Errorf("探针失败: %w", err)
 	}
@@ -142,7 +141,7 @@ func cmdDoctor(args []string) error {
 	}
 
 	if firstOffline != nil && firstOffline.Location != "" {
-		ep, warns := endpointFromEvidence(prof, *firstOffline)
+		ep, warns := session.EndpointFromEvidence(prof, *firstOffline)
 		fmt.Println("== 网关参数（已脱敏）==")
 		fmt.Printf("host=%s port=%d\n", ep.Host, ep.Port)
 		for _, k := range []string{"userip", "wlanacip", "usermac"} {
@@ -188,7 +187,7 @@ func cmdLogin(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	state, ev, err := probeOnce(ctx, prof)
+	state, ev, err := session.ProbeOnce(ctx, prof)
 	if err != nil {
 		return fmt.Errorf("探针失败: %w", err)
 	}
@@ -197,7 +196,7 @@ func cmdLogin(args []string) error {
 		return nil
 	}
 
-	ep, warns := endpointFromEvidence(prof, ev)
+	ep, warns := session.EndpointFromEvidence(prof, ev)
 	for _, w := range warns {
 		fmt.Println("告警:", w)
 	}
@@ -242,78 +241,6 @@ func readCredential(path string) (portal.Credential, error) {
 		return portal.Credential{}, fmt.Errorf("凭据文件缺少 username 或 password")
 	}
 	return portal.Credential{Username: f.Username, Password: f.Password, Carrier: f.Carrier}, nil
-}
-
-// probeOnce 逐个探针判定：任意一个在线即在线。
-// 全部失败才视为离线，避免单站点故障造成误判。
-func probeOnce(ctx context.Context, prof config.Profile) (portal.State, probe.Evidence, error) {
-	c := probe.New()
-
-	var firstOffline *probe.Evidence
-	var lastErr error
-
-	for _, p := range prof.Network.Probes {
-		state, ev, err := c.Check(ctx, p.URL, prof.Network.ProbeHosts, p.Expect)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if state == portal.StateOnline {
-			return state, ev, nil
-		}
-		if state == portal.StateOffline && firstOffline == nil {
-			e := ev
-			firstOffline = &e
-		}
-	}
-
-	if firstOffline != nil {
-		return portal.StateOffline, *firstOffline, nil
-	}
-	if lastErr != nil {
-		return portal.StateUnknown, probe.Evidence{}, lastErr
-	}
-	return portal.StateUnknown, probe.Evidence{}, nil
-}
-
-// endpointFromEvidence 从 302 的 Location 中解析网关地址与登录参数。
-// 参数缺失只告警不阻断：同类项目实测这些字段并非认证必填项。
-func endpointFromEvidence(prof config.Profile, ev probe.Evidence) (portal.Endpoint, []string) {
-	ep := portal.Endpoint{
-		Host:      prof.Portal.Host,
-		Port:      prof.Portal.Port,
-		LoginPath: prof.Portal.LoginPath,
-		Extra:     map[string]string{},
-	}
-	for k, v := range prof.Login.ExtraParams {
-		ep.Extra[k] = v
-	}
-
-	var warns []string
-
-	if ev.Location == "" {
-		warns = append(warns, "未拿到门户重定向地址，网关参数可能缺失")
-	} else if u, err := url.Parse(ev.Location); err == nil {
-		if h := u.Hostname(); h != "" {
-			ep.Host = h
-		}
-		if ps := u.Port(); ps != "" {
-			if n, err := strconv.Atoi(ps); err == nil {
-				ep.Port = n
-			}
-		}
-		q := u.Query()
-		ep.Extra["userip"] = q.Get("userip")
-		ep.Extra["usermac"] = q.Get("usermac")
-		ep.Extra["wlanacip"] = q.Get("wlanacip")
-	}
-
-	for _, k := range []string{"userip", "usermac", "wlanacip"} {
-		if ep.Extra[k] == "" {
-			warns = append(warns, k+" 为空，仍尝试登录")
-		}
-	}
-	return ep, warns
 }
 
 func maskValue(s string) string {

@@ -24,6 +24,7 @@ import (
 	"github.com/love486love/epo-2026/internal/netinfo"
 	"github.com/love486love/epo-2026/internal/portal"
 	"github.com/love486love/epo-2026/internal/portal/drcom"
+	"github.com/love486love/epo-2026/internal/session"
 	"github.com/love486love/epo-2026/internal/trust"
 )
 
@@ -153,7 +154,7 @@ func (g *guiServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		resp.RandomMAC = ni.RandomMAC
 	}
 
-	state, _, err := probeOnce(ctx, g.prof)
+	state, _, err := session.ProbeOnce(ctx, g.prof)
 	if err != nil {
 		resp.State = "unknown"
 		resp.Message = err.Error()
@@ -188,7 +189,7 @@ func (g *guiServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
 
-	state, ev, err := probeOnce(ctx, g.prof)
+	state, ev, err := session.ProbeOnce(ctx, g.prof)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"ok": "false", "message": "探针失败: " + err.Error()})
 		return
@@ -198,7 +199,7 @@ func (g *guiServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ep, warns := endpointFromEvidence(g.prof, ev)
+	ep, warns := session.EndpointFromEvidence(g.prof, ev)
 	cred := portal.Credential{Username: secret.Username, Password: secret.Password, Carrier: secret.Carrier}
 	if cred.Carrier == "" {
 		cred.Carrier = g.prof.Login.Carrier
