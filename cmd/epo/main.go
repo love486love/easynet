@@ -36,6 +36,12 @@ func main() {
 		err = cmdDoctor(os.Args[2:])
 	case "login":
 		err = cmdLogin(os.Args[2:])
+	case "daemon":
+		err = cmdDaemon(os.Args[2:])
+	case "save-cred":
+		err = cmdSaveCred(os.Args[2:])
+	case "autostart":
+		err = cmdAutostart(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println(version)
 		return
@@ -56,6 +62,9 @@ func usage() {
   epo status  [-profile 路径]   查看当前在线状态
   epo doctor  [-profile 路径]   输出诊断信息（不含凭据）
   epo login   -cred 凭据文件     执行一次认证
+  epo save-cred -cred 凭据文件   用 DPAPI 加密保存凭据
+  epo daemon                    常驻守护（掉线自动重连）
+  epo autostart install|remove|status  开关开机自启
   epo version                  显示版本
 `, version)
 }

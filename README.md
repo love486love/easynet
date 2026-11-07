@@ -4,7 +4,18 @@
 
 连上校园 Wi-Fi 后自动完成 Dr.COM ePortal 网页认证，无需再打开浏览器输入账号密码。
 
-> 当前状态：**设计阶段**。协议与在线判定已通过真实抓包与断网/联网双向实测验证，代码尚未开始。
+> 当前状态：**M2 进行中**。协议层、判定层、凭据存储与守护循环已实现并通过单元测试；GUI 尚未开始。
+
+## 命令行
+
+```bash
+epo status          # 查看在线状态
+epo doctor          # 诊断：本机网络 + 各探针证据 + 网关参数（已脱敏）
+epo login -cred c.json        # 登录一次（凭据文件不入库）
+epo save-cred -cred c.json    # 用 DPAPI 加密保存凭据
+epo daemon          # 常驻守护：掉线自动重连
+epo autostart install|remove|status   # 开机自启（HKCU\Run，无需管理员）
+```
 
 ## 特性（规划）
 
