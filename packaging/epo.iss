@@ -1,0 +1,56 @@
+; Inno Setup 脚本：生成带标准卸载项（unins000.exe）的安装包。
+; 版本号由 CI 通过 /DMyAppVersion=<tag> 注入，本地默认 0.1.0。
+
+#ifndef MyAppVersion
+  #define MyAppVersion "0.1.0"
+#endif
+
+#define MyAppName "epo"
+#define MyAppPublisher "love486love"
+#define MyAppURL "https://github.com/love486love/epo-2026"
+#define MyAppExeName "epo-gui.exe"
+
+[Setup]
+AppId={{6D3E9B52-8C1F-4A7D-9E44-2B7A5F0C1D88}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+AppPublisherURL={#MyAppURL}
+AppSupportURL={#MyAppURL}
+DefaultDirName={autopf}\epo
+DefaultGroupName={#MyAppName}
+DisableProgramGroupPage=yes
+UninstallDisplayIcon={app}\{#MyAppExeName}
+Compression=lzma2/max
+SolidCompression=yes
+WizardStyle=modern
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+PrivilegesRequired=lowest
+OutputDir=..\dist-installer
+OutputBaseFilename=epo-setup-{#MyAppVersion}
+
+[Languages]
+Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+
+[Files]
+Source: "..\dist\epo-gui.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\epo-daemon.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\epo.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\checksums.txt"; DestDir: "{app}"; Flags: ignoreversion
+
+[Icons]
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
+
+[Run]
+Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+Filename: "{cmd}"; Parameters: "/c reg delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v epo-daemon /f"; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/c taskkill /IM epo-daemon.exe /F"; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/c taskkill /IM epo-gui.exe /F"; Flags: runhidden
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{localappdata}\epo"

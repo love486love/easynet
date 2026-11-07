@@ -9,7 +9,15 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 )
+
+// 隐藏子进程的控制台窗口：GUI（windowsgui 子系统）调用 reg.exe 时不应闪黑框。
+func hidden(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd
+}
 
 const (
 	runKey    = `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
@@ -18,7 +26,7 @@ const (
 
 // Enable 写入自启项，值为带引号的 exe 路径。
 func Enable(exe string) error {
-	cmd := exec.Command("reg", "add", runKey, "/v", valueName, "/t", "REG_SZ", "/d", `"`+exe+`"`, "/f")
+	cmd := hidden("reg", "add", runKey, "/v", valueName, "/t", "REG_SZ", "/d", `"`+exe+`"`, "/f")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("写入自启失败: %v %s", err, strings.TrimSpace(string(out)))
 	}
@@ -27,7 +35,7 @@ func Enable(exe string) error {
 
 // Disable 删除自启项；本来不存在时视为成功。
 func Disable() error {
-	cmd := exec.Command("reg", "delete", runKey, "/v", valueName, "/f")
+	cmd := hidden("reg", "delete", runKey, "/v", valueName, "/f")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(out), "unable to find") || strings.Contains(string(out), "找不到") {
 			return nil
@@ -39,7 +47,8 @@ func Disable() error {
 
 // Value 返回当前注册的自启命令；未设置时返回空串。
 func Value() (string, error) {
-	out, err := exec.Command("reg", "query", runKey, "/v", valueName).Output()
+	cmd := hidden("reg", "query", runKey, "/v", valueName)
+	out, err := cmd.Output()
 	if err != nil {
 		return "", nil
 	}

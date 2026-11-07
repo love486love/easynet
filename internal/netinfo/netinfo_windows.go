@@ -85,7 +85,9 @@ func mustAddrs(iface *net.Interface) []net.Addr {
 }
 
 func currentSSID() (string, error) {
-	out, err := exec.Command("netsh", "wlan", "show", "interfaces").Output()
+	cmd := exec.Command("netsh", "wlan", "show", "interfaces")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("执行 netsh 失败: %w", err)
 	}
