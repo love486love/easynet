@@ -3,7 +3,6 @@
 package main
 
 import (
-	"path/filepath"
 	"time"
 
 	"fyne.io/systray"
@@ -46,7 +45,7 @@ func recordError(err error) {
 	}
 	// 写进状态快照，界面能直接看到失败原因（例如"读取凭据失败"）。
 	_ = state.Write(dir, state.Snapshot{State: "stopped", Message: "启动失败: " + err.Error()})
-	logger, closeLog, lerr := logx.New(filepath.Join(dir, "logs"))
+	logger, closeLog, lerr := logx.New(config.LogDir())
 	if lerr != nil {
 		return
 	}

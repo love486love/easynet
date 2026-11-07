@@ -252,7 +252,7 @@ func (a *App) SetAutostart(enabled bool) (string, error) {
 
 // Logs 返回日志尾部 40 行。
 func (a *App) Logs() []string {
-	data, err := os.ReadFile(filepath.Join(a.dir, "logs", "epo.log"))
+	data, err := os.ReadFile(filepath.Join(config.LogDir(), "epo.log"))
 	if err != nil {
 		return []string{}
 	}
@@ -268,7 +268,7 @@ func (a *App) ExportLog(dest string) (string, error) {
 	if dest == "" {
 		return "", fmt.Errorf("未选择保存位置")
 	}
-	data, err := os.ReadFile(filepath.Join(a.dir, "logs", "epo.log"))
+	data, err := os.ReadFile(filepath.Join(config.LogDir(), "epo.log"))
 	if err != nil {
 		return "", fmt.Errorf("读取日志失败: %w", err)
 	}
@@ -280,7 +280,7 @@ func (a *App) ExportLog(dest string) (string, error) {
 
 // OpenLogsDir 用资源管理器打开日志目录。
 func (a *App) OpenLogsDir() (string, error) {
-	dir := filepath.Join(a.dir, "logs")
+	dir := config.LogDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}

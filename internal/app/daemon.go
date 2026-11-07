@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"time"
 
 	"github.com/love486love/epo-2026/internal/config"
@@ -36,7 +35,7 @@ func RunDaemon(profilePath string) error {
 	}
 
 	// 先建日志，再读凭据：否则早期失败不会留下任何可排查的痕迹。
-	logger, closeLog, err := logx.New(filepath.Join(dir, "logs"))
+	logger, closeLog, err := logx.New(config.LogDir())
 	if err != nil {
 		return err
 	}

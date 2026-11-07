@@ -115,6 +115,25 @@ func UserDir() (string, error) {
 	return filepath.Join(base, "epo"), nil
 }
 
+// LogDir 返回日志目录：优先程序目录下的 log（不占系统盘、随程序一起删除），
+// 程序目录不可写（例如装在 Program Files）时回退到 %LOCALAPPDATA%\epo\logs。
+func LogDir() string {
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Join(filepath.Dir(exe), "log")
+		if mkErr := os.MkdirAll(dir, 0o755); mkErr == nil {
+			probe := filepath.Join(dir, ".write-test")
+			if werr := os.WriteFile(probe, []byte("x"), 0o644); werr == nil {
+				_ = os.Remove(probe)
+				return dir
+			}
+		}
+	}
+	if d, err := UserDir(); err == nil {
+		return filepath.Join(d, "logs")
+	}
+	return filepath.Join(os.TempDir(), "epo", "logs")
+}
+
 // Load 从指定路径读取 profile；文件不存在时返回默认配置。
 func Load(path string) (Profile, error) {
 	data, err := os.ReadFile(path)
