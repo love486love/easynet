@@ -766,7 +766,7 @@ git push origin v0.1.0
 |---|---|---|
 | 守护状态机 | `internal/daemon`：5s 探测 / 3s 重试 / 3 次后 45s / 封顶 60s；10 分钟最多 3 次；短存活进长退避；登录后 2 次复核 | 6 个假时钟用例 |
 | 单实例 | `internal/instance`：命名互斥体 `Local\epo-daemon` | 编译通过（需双进程手测） |
-| 网关 MAC（TOFU） | `netinfo.arpMAC` 用 `SendARP` 读默认网关链路层地址；`internal/trust` 持久化 LRU 列表（上限 8） | 真机实测 `gwMAC=xx:xx:xx:xx:xx:xx`，与 M0 记录一致 |
+| 网关 MAC（TOFU） | `netinfo.arpMAC` 用 `SendARP` 读默认网关链路层地址；`internal/trust` 持久化 LRU 列表（上限 8） | 真机实测 `gwMAC=xx:xx:xx:xx:xx:xx`（已脱敏），与 M0 记录一致 |
 | 启动记录时机 | `daemon.Deps.OnVerified`：仅在"登录成功且复核在线"后记录，防投毒 | 逻辑接点已接 |
 | 开机自启 | `internal/autostart`：写 `HKCU\Run`，指向 windowsgui 的 `epo-daemon.exe`，无需管理员 | `epo autostart status` 冒烟通过 |
 | 凭据 | `epo save-cred` 用 DPAPI 保存，`epo daemon` 启动时解密 | creds 往返测试通过 |
@@ -784,7 +784,7 @@ git push origin v0.1.0
 | 13:03:38 | 守护启动 |
 | 13:03:42 | 判定在线 |
 | 13:03:53 | **检测到掉线**（用户点击注销后） |
-| 13:03:57 | 记录网关 MAC `xx:xx:xx:xx:xx:xx` |
+| 13:03:57 | 记录网关 MAC `xx:xx:xx:xx:xx:xx`（已脱敏） |
 | 13:03:57 | **登录成功，进入在线态** |
 | 13:03:57 | `trusted_macs.json` 生成 |
 
