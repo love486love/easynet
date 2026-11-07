@@ -241,6 +241,33 @@
   .about-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); max-width: 640px; }
   .about-row span:first-child { color: var(--muted); }
   .link { color: var(--accent); cursor: pointer; user-select: text; }
+
+  /* ---------- 新手引导 ---------- */
+  .tut-overlay { position: fixed; inset: 0; z-index: 60; }
+  .tut-overlay[hidden] { display: none; }
+  .tut-dim { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); }
+  .tut-dim[hidden] { display: none; }
+  .tut-spot {
+    position: fixed; z-index: 61; border-radius: 10px; pointer-events: none;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55);
+    transition: left .22s ease, top .22s ease, width .22s ease, height .22s ease;
+  }
+  .tut-spot[hidden] { display: none; }
+  .tut-card {
+    position: fixed; z-index: 62; width: 340px;
+    background: var(--panel); border: 1px solid var(--line2); border-radius: 14px;
+    padding: 18px 18px 12px; box-shadow: 0 18px 48px rgba(0, 0, 0, .35);
+    transition: top .22s ease, left .22s ease;
+  }
+  .tut-step { font-size: 10.5px; color: var(--accent); letter-spacing: .1em; }
+  .tut-title { font-size: 16px; font-weight: 700; margin: 6px 0 8px; }
+  .tut-text { font-size: 12.5px; color: var(--muted); line-height: 1.75; min-height: 54px; }
+  .tut-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+  .tut-dots { display: flex; gap: 5px; }
+  .tut-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line2); transition: background .15s; }
+  .tut-dot.on { background: var(--accent); }
+  .tut-skip { display: block; text-align: right; margin-top: 10px; font-size: 11.5px; }
 </style>
 </head>
 <body>
@@ -403,6 +430,7 @@
         <h2 class="page-title">关于</h2>
         <div class="page-sub">江西农业大学校园网自动认证工具</div>
         <div class="about-row"><span>版本</span><span>v0.1.0</span></div>
+        <div class="about-row"><span>新手引导</span><span class="link" onclick="startTutorial()">重新播放</span></div>
         <div class="about-row"><span>仓库</span><span class="link" onclick="openRepo()">github.com/love486love/epo-2026</span></div>
         <div class="about-row"><span>协议</span><span>MIT</span></div>
         <div class="about-row"><span>数据</span><span>全部保存在本机，无联网上报</span></div>
@@ -411,6 +439,24 @@
         </div>
       </section>
     </main>
+  </div>
+</div>
+
+<div class="tut-overlay" id="tutOverlay" hidden>
+  <div class="tut-dim" id="tutDim"></div>
+  <div class="tut-spot" id="tutSpot" hidden></div>
+  <div class="tut-card" id="tutCard">
+    <div class="tut-step" id="tutStep"></div>
+    <div class="tut-title" id="tutTitle"></div>
+    <div class="tut-text" id="tutText"></div>
+    <div class="tut-actions">
+      <div class="tut-dots" id="tutDots"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="tutPrev" onclick="prevTutorial()">上一步</button>
+        <button class="btn primary" id="tutNext" onclick="nextTutorial()">下一步</button>
+      </div>
+    </div>
+    <span class="link tut-skip" onclick="endTutorial()">跳过引导</span>
   </div>
 </div>
 
@@ -733,10 +779,128 @@ async function toggleAutostart() {
   } catch (e) { setMsg(String(e), false); }
 }
 
+/* ---------- 新手引导 ---------- */
+const TUTORIAL_STEPS = [
+  {
+    title: '欢迎使用 epo',
+    text: '连上校园 Wi-Fi 后自动完成认证，不用再打开门户输入账号密码。下面用 4 步带你完成设置。',
+  },
+  {
+    page: 'account',
+    target: '.nav-item[data-page="account"]',
+    title: '第 1 步 · 保存账号',
+    text: '在「账号」页填写学号、密码和运营商线路。支持保存多个账号，随时切换当前使用的那一个。',
+  },
+  {
+    page: 'overview',
+    target: '.daemon-bar',
+    title: '第 2 步 · 启动守护',
+    text: '点「启动守护」后，掉线会在几秒内自动重连，期间不需要打开界面。',
+  },
+  {
+    target: '#autoSwitch',
+    title: '第 3 步 · 开机自启',
+    text: '打开左下角「开机自启」，下次开机守护会自动运行，连上 Wi-Fi 就能用。',
+  },
+  {
+    title: '关闭窗口也没关系',
+    text: '守护是独立进程。关闭界面后它仍在工作，托盘图标可以查看状态、打开界面或退出。',
+  },
+  {
+    title: '设置完成',
+    text: '随时可以在「关于」页点「重新播放」再看一遍。祝你上网顺畅。',
+  },
+];
+
+let tutIndex = 0;
+
+function startTutorial() {
+  tutIndex = 0;
+  document.getElementById('tutOverlay').hidden = false;
+  showTutorialStep(0);
+}
+
+function showTutorialStep(i) {
+  tutIndex = i;
+  const steps = TUTORIAL_STEPS;
+  const s = steps[i];
+
+  if (s.page) {
+    const nav = document.querySelector('.nav-item[data-page="' + s.page + '"]');
+    if (nav) nav.click();
+  }
+
+  document.getElementById('tutStep').textContent = 'STEP ' + (i + 1) + ' / ' + steps.length;
+  document.getElementById('tutTitle').textContent = s.title;
+  document.getElementById('tutText').textContent = s.text;
+  document.getElementById('tutPrev').style.visibility = i === 0 ? 'hidden' : 'visible';
+  document.getElementById('tutNext').textContent = i === steps.length - 1 ? '开始使用' : '下一步';
+
+  const dots = document.getElementById('tutDots');
+  dots.innerHTML = '';
+  steps.forEach((_, idx) => {
+    const d = document.createElement('span');
+    d.className = 'tut-dot' + (idx === i ? ' on' : '');
+    dots.appendChild(d);
+  });
+
+  const spot = document.getElementById('tutSpot');
+  const dim = document.getElementById('tutDim');
+  const card = document.getElementById('tutCard');
+  const el = s.target ? document.querySelector(s.target) : null;
+
+  if (el) {
+    const r = el.getBoundingClientRect();
+    spot.hidden = false;
+    dim.hidden = true;
+    spot.style.left = (r.left - 6) + 'px';
+    spot.style.top = (r.top - 6) + 'px';
+    spot.style.width = (r.width + 12) + 'px';
+    spot.style.height = (r.height + 12) + 'px';
+
+    let top = r.bottom + 16;
+    if (top + 210 > window.innerHeight) top = Math.max(14, r.top - 220);
+    let left = r.left;
+    if (left + 340 > window.innerWidth - 14) left = window.innerWidth - 354;
+    card.style.top = top + 'px';
+    card.style.left = Math.max(14, left) + 'px';
+  } else {
+    spot.hidden = true;
+    dim.hidden = false;
+    card.style.top = Math.max(14, window.innerHeight / 2 - 120) + 'px';
+    card.style.left = Math.max(14, window.innerWidth / 2 - 170) + 'px';
+  }
+}
+
+function nextTutorial() {
+  if (tutIndex >= TUTORIAL_STEPS.length - 1) { endTutorial(); return; }
+  showTutorialStep(tutIndex + 1);
+}
+
+function prevTutorial() {
+  if (tutIndex > 0) showTutorialStep(tutIndex - 1);
+}
+
+function endTutorial() {
+  document.getElementById('tutOverlay').hidden = true;
+  try { localStorage.setItem('epo-tutorial-done', '1'); } catch (e) { }
+}
+
+function maybeStartTutorial() {
+  let done = null;
+  try { done = localStorage.getItem('epo-tutorial-done'); } catch (e) { }
+  if (!done) setTimeout(startTutorial, 900);
+}
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && !document.getElementById('tutOverlay').hidden) endTutorial();
+});
+
 refresh();
 loadAutostart();
 setInterval(loadLogs, 5000);
 setInterval(loadDaemon, 5000);
+maybeStartTutorial();
 </script>
 </body>
 </html>
