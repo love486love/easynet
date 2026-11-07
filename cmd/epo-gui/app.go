@@ -159,8 +159,15 @@ func (a *App) SaveCred(username, password, carrier string) (string, error) {
 	if carrier == "" {
 		carrier = a.prof.Login.Carrier
 	}
+	old, loadErr := creds.Load(a.dir)
+	if loadErr == nil && old.Username == username && old.Password == password && old.Carrier == carrier {
+		return "该账号已保存，无需重复添加", nil
+	}
 	if err := creds.Save(a.dir, creds.Secret{Username: username, Password: password, Carrier: carrier}); err != nil {
 		return "", err
+	}
+	if loadErr == nil && old.Username == username {
+		return "账号已更新（重启守护后生效）", nil
 	}
 	return "凭据已加密保存（重启守护后生效）", nil
 }
