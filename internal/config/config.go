@@ -105,11 +105,12 @@ func Default() Profile {
 }
 
 // UserDir 返回 %LOCALAPPDATA%\epo。
-// 刻意不用 %APPDATA%：漫游目录会导致 DPAPI 密文跨机器解密失败。
+// 刻意不用 %APPDATA%（漫游）：漫游目录会随账号同步到其它机器，
+// 而 DPAPI 密文绑定本机，同步过去反而解密失败。
 func UserDir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		return "", fmt.Errorf("环境变量 LOCALAPPDATA 未设置")
 	}
 	return filepath.Join(base, "epo"), nil
 }

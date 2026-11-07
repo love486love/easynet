@@ -13,6 +13,13 @@ function Ok($m) { Write-Host "[+] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[!] $m" -ForegroundColor Yellow }
 
 $proc = $null
+$transcriptPath = Join-Path $PSScriptRoot 'selftest-last.txt'
+try {
+    Start-Transcript -Path $transcriptPath -Force | Out-Null
+} catch {
+    Write-Host "[!] 无法写入运行记录：$transcriptPath" -ForegroundColor Yellow
+}
+
 try {
     # 参数默认值里取不到 $PSScriptRoot，必须在脚本体内解析
     if ([string]::IsNullOrWhiteSpace($Epo)) {
@@ -125,4 +132,5 @@ finally {
         Stop-Process -Id $proc.Id -Force
         Ok "守护已停止"
     }
+    try { Stop-Transcript | Out-Null } catch { }
 }
