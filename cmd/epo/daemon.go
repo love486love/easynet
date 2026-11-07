@@ -19,6 +19,7 @@ import (
 	"github.com/love486love/epo-2026/internal/portal"
 	"github.com/love486love/epo-2026/internal/portal/drcom"
 	"github.com/love486love/epo-2026/internal/probe"
+	"github.com/love486love/epo-2026/internal/trust"
 )
 
 // cmdSaveCred 把 JSON 凭据用 DPAPI 加密后写入本地目录。
@@ -94,6 +95,12 @@ func cmdDaemon(args []string) error {
 		cred.Carrier = prof.Login.Carrier
 	}
 
+	trusted, err := trust.Load(dir)
+	if err != nil {
+		return fmt.Errorf("读取网关信任列表失败: %w", err)
+	}
+	lastGatewayMAC := ""
+
 	loginFn := func(ctx context.Context, ev probe.Evidence) (portal.Result, error) {
 		ni, niErr := netinfo.Get()
 		if niErr != nil {
@@ -105,17 +112,21 @@ func cmdDaemon(args []string) error {
 			logger.Warn("网关参数告警", "detail", w)
 		}
 
-		// 四项校验中与本地状态相关的部分；网关 MAC 信任留待下一轮补 ARP 读取。
+		// 四项校验：SSID / 门户白名单 / 随机 MAC（仅告警）/ 网关 MAC 信任。
+		// 信任列表为空时只记录不阻断，避免首次使用被卡死。
 		if _, gerr := guard.Check(guard.Input{
 			TargetSSID:   prof.Network.SSID,
 			CurrentSSID:  ni.SSID,
 			PortalHost:   ep.Host,
 			AllowedHosts: []string{prof.Portal.Host},
+			GatewayMAC:   ni.GatewayMAC,
+			TrustedMACs:  trusted,
 			RandomMAC:    ni.RandomMAC,
 		}); gerr != nil {
 			return portal.Result{Code: 6, Message: gerr.Error()}, gerr
 		}
 
+		lastGatewayMAC = ni.GatewayMAC
 		client := drcom.NewWithSuffixes(prof.Login.CarrierSuffixes)
 		return client.Login(ctx, ep, cred)
 	}
@@ -127,6 +138,19 @@ func cmdDaemon(args []string) error {
 		Probe:  func(ctx context.Context) (portal.State, probe.Evidence, error) { return probeOnce(ctx, prof) },
 		Login:  loginFn,
 		Log:    logger,
+		OnVerified: func() {
+			if lastGatewayMAC == "" {
+				logger.Warn("网关 MAC 为空，跳过信任记录")
+				return
+			}
+			updated, err := trust.Remember(dir, lastGatewayMAC)
+			if err != nil {
+				logger.Warn("记录网关 MAC 失败", "err", err)
+				return
+			}
+			trusted = updated
+			logger.Info("已记录网关 MAC", "mac", lastGatewayMAC)
+		},
 	})
 
 	logger.Info("守护退出")

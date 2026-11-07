@@ -18,16 +18,18 @@ import (
 
 // Info 是判定与校验所需的本机网络信息。
 type Info struct {
-	SSID      string
-	IPv4      string
-	Gateway   string
-	MAC       string
-	RandomMAC bool // 网卡 MAC 是否置了本地管理位（随机硬件地址）
+	SSID       string
+	IPv4       string
+	Gateway    string
+	GatewayMAC string // 默认网关的链路层地址，来自 ARP
+	MAC        string
+	RandomMAC  bool // 网卡 MAC 是否置了本地管理位（随机硬件地址）
 }
 
 var (
 	modIphlpapi           = syscall.NewLazyDLL("iphlpapi.dll")
 	procGetIpForwardTable = modIphlpapi.NewProc("GetIpForwardTable")
+	procSendARP           = modIphlpapi.NewProc("SendARP")
 )
 
 const errorInsufficientBuffer = 122
@@ -47,6 +49,9 @@ func Get() (Info, error) {
 		return info, err
 	}
 	info.Gateway = gw
+	if gw != "" {
+		info.GatewayMAC = arpMAC(net.ParseIP(gw))
+	}
 	if ifIndex == 0 {
 		return info, nil
 	}
@@ -103,6 +108,37 @@ func ParseSSID(out string) string {
 	return ""
 }
 
+// ipv4FromMIB 把 MIB 路由表里的网络序 4 字节还原为点分十进制。
+// 小端机器把 10.100.0.1 读成 0x0100640A，因此按低字节到高字节取。
+func ipv4FromMIB(v uint32) string {
+	return net.IPv4(byte(v), byte(v>>8), byte(v>>16), byte(v>>24)).String()
+}
+
+// arpMAC 通过 SendARP 取同网段主机（默认网关）的链路层地址。
+// 失败时返回空串：调用方应降级为"仅告警"，不能因此阻断登录。
+func arpMAC(ip net.IP) string {
+	v4 := ip.To4()
+	if v4 == nil {
+		return ""
+	}
+	// SendARP 接受与 inet_addr 相同的 4 字节网络序值；
+	// 在小端机器上等价于直接按字节读成 uint32。
+	dest := uint32(v4[0]) | uint32(v4[1])<<8 | uint32(v4[2])<<16 | uint32(v4[3])<<24
+
+	var mac [8]byte
+	length := uint32(6)
+	r, _, _ := procSendARP.Call(
+		uintptr(dest), 0,
+		uintptr(unsafe.Pointer(&mac[0])),
+		uintptr(unsafe.Pointer(&length)),
+	)
+	if r != 0 || length < 6 {
+		return ""
+	}
+	return fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x",
+		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
+}
+
 // defaultRoute 从 IP 路由表取默认网关及其接口索引。
 func defaultRoute() (gateway string, ifIndex uint32, err error) {
 	var size uint32
@@ -135,7 +171,7 @@ func defaultRoute() (gateway string, ifIndex uint32, err error) {
 		metric := *(*uint32)(unsafe.Add(row, 36))
 		if metric < bestMetric {
 			bestMetric = metric
-			gateway = net.IPv4(byte(nextHop>>24), byte(nextHop>>16), byte(nextHop>>8), byte(nextHop)).String()
+			gateway = ipv4FromMIB(nextHop)
 			ifIndex = idx
 		}
 	}

@@ -47,6 +47,16 @@ func TestParseSSIDDisconnected(t *testing.T) {
 	}
 }
 
+func TestIPv4FromMIB(t *testing.T) {
+	// 10.100.0.1 在 MIB 里按小端读作 0x0100640A。
+	if got := ipv4FromMIB(0x0100640A); got != "10.100.0.1" {
+		t.Fatalf("got %q, want 10.100.0.1", got)
+	}
+	if got := ipv4FromMIB(0x03021A0B); got != "11.26.2.3" {
+		t.Fatalf("got %q, want 11.26.2.3", got)
+	}
+}
+
 func TestGetDoesNotPanic(t *testing.T) {
 	info, err := Get()
 	if err != nil {

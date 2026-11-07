@@ -777,3 +777,18 @@ jobs:
 | C-7 | PowerShell 同类守护常驻 67–86 MB，凭据以明文存 `config.json` | 本项目 Go daemon 目标 < 40 MB、凭据 DPAPI 加密，属差异化优势，写入 README | README、§8 |
 
 **测试**：整改后 5 个包共 46 个用例全部通过（`drcom` 12、`probe` 14、`guard` 8、`creds` 2、`netinfo` 4 + 解析用例），`go build ./...` 与 `go vet ./...` 均无输出。
+
+## 24. M2 实现记录
+
+| 项 | 实现 | 验证 |
+|---|---|---|
+| 守护状态机 | `internal/daemon`：5s 探测 / 3s 重试 / 3 次后 45s / 封顶 60s；10 分钟最多 3 次；短存活进长退避；登录后 2 次复核 | 6 个假时钟用例 |
+| 单实例 | `internal/instance`：命名互斥体 `Local\epo-daemon` | 编译通过（需双进程手测） |
+| 网关 MAC（TOFU） | `netinfo.arpMAC` 用 `SendARP` 读默认网关链路层地址；`internal/trust` 持久化 LRU 列表（上限 8） | 真机实测 `gwMAC=xx:xx:xx:xx:xx:xx`，与 M0 记录一致 |
+| 启动记录时机 | `daemon.Deps.OnVerified`：仅在"登录成功且复核在线"后记录，防投毒 | 逻辑接点已接 |
+| 开机自启 | `internal/autostart`：写 `HKCU\Run`，指向 windowsgui 的 `epo-daemon.exe`，无需管理员 | `epo autostart status` 冒烟通过 |
+| 凭据 | `epo save-cred` 用 DPAPI 保存，`epo daemon` 启动时解密 | creds 往返测试通过 |
+
+**途中修掉的一个真实缺陷**：`MIB_IPFORWARDROW` 的地址是网络序，原实现按大端取值，导致网关显示为 `1.0.100.10`（正确值 `10.100.0.1`）。已改为按小端还原并补充 `TestIPv4FromMIB` 回归用例；`SendARP` 的目标地址同步修正。
+
+**已知未做**：GUI（M3）、IPC（M3）、真机"掉线→自动重连"联调（需在校园网内人为掉线一次）。
