@@ -18,6 +18,8 @@
 | `easynet-windows-x64.zip`（绿色版） | 不想安装、想放任意目录或 U 盘 | 运行目录里的 `uninstall.bat` |
 | `easynet-setup-*.exe`（安装版） | 想从「设置 → 应用」正常卸载 | 应用列表卸载，或运行 `unins000.exe` |
 
+数据保存在 `%LOCALAPPDATA%\easynet`，升级时覆盖 exe 不会丢配置；运行日志写在程序目录的 `log` 文件夹。
+
 ## 快速开始
 
 1. 解压 / 安装后双击 `easynet.exe`
