@@ -153,6 +153,17 @@
   .value.mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
 
   /* ---------- 表单 / 日志 / 关于 ---------- */
+  .account-card {
+    display: none; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 16px; max-width: 640px;
+  }
+  .account-value { font-size: 14px; font-weight: 600; margin-top: 4px; }
+  .account-actions { display: flex; gap: 8px; }
+  .btn.danger { color: var(--bad); border-color: var(--bad); background: transparent; }
+  .btn.danger:hover { background: rgba(207, 34, 46, .08); border-color: var(--bad); }
+  .account-empty { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+
   .form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 640px; }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field.span2 { grid-column: span 2; }
@@ -279,6 +290,19 @@
       <section class="page" id="page-account">
         <h2 class="page-title">账号</h2>
         <div class="page-sub">密码使用 Windows DPAPI 加密保存在本机，不会上传</div>
+
+        <div class="account-card" id="accCard">
+          <div>
+            <div class="label">当前已保存账号</div>
+            <div class="account-value" id="accValue">—</div>
+          </div>
+          <div class="account-actions">
+            <button class="btn" onclick="fillAccount()">修改</button>
+            <button class="btn danger" onclick="deleteAccount()">删除账号</button>
+          </div>
+        </div>
+        <div class="account-empty" id="accEmpty">尚未保存账号，请在下方填写</div>
+
         <div class="form">
           <div class="field">
             <label>学号</label>
@@ -441,12 +465,59 @@ async function toggleDaemon() {
   await loadDaemon();
 }
 
+const CARRIER_NAMES = { cmcc: '中国移动', ctcc: '中国电信', cucc: '中国联通', campus: '校园线路' };
+
+async function loadAccount() {
+  if (!App()) return;
+  try {
+    const a = await App().Account();
+    const card = document.getElementById('accCard');
+    const empty = document.getElementById('accEmpty');
+    if (a && a.saved) {
+      card.style.display = 'flex';
+      empty.style.display = 'none';
+      document.getElementById('accValue').textContent =
+        a.username + ' · ' + (CARRIER_NAMES[a.carrier] || a.carrier || '未指定线路');
+    } else {
+      card.style.display = 'none';
+      empty.style.display = 'block';
+    }
+  } catch (e) { }
+}
+
+async function fillAccount() {
+  if (!App()) return;
+  try {
+    const a = await App().Account();
+    if (!a || !a.saved) return;
+    document.getElementById('user').value = a.username || '';
+    if (a.carrier) document.getElementById('carrier').value = a.carrier;
+    document.getElementById('pass').focus();
+  } catch (e) { }
+}
+
+async function deleteAccount() {
+  if (!App()) return;
+  if (!confirm('确定删除已保存的账号？删除后需要重新填写才能自动认证。')) return;
+  const el = document.getElementById('credMsg');
+  try {
+    const msg = await App().DeleteAccount();
+    el.textContent = msg;
+    el.className = 'msg ok';
+    await refresh();
+  } catch (e) {
+    el.textContent = String(e);
+    el.className = 'msg bad';
+  }
+}
+
 async function refresh() {
   if (!App()) { setMsg('后端未就绪', false); return; }
   try { renderState(await App().Status()); }
   catch (e) { setMsg('刷新失败，请稍后重试', false); }
   await loadLogs();
   await loadDaemon();
+  await loadAccount();
 }
 
 async function loadLogs() {
