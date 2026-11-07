@@ -500,56 +500,38 @@ dr1003({"result":1,"msg":"Portal协议认证成功！"});
 
 ## 9. 构建与发布
 
-```bash
-npm ci --prefix cmd/epo-gui/frontend
+**本地构建**（Windows，Go 1.22，**不需要 Node/npm**）：
+
+```powershell
 go test ./...
-go build -ldflags "-s -w" -o epo.exe ./cmd/epo
-go build -ldflags "-s -w" -H windowsgui -o epo-daemon.exe ./cmd/epo-daemon
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.2
-wails build -platform windows/amd64   # 在 cmd/epo-gui 内执行
+go build -ldflags "-s -w" -o build\epo.exe ./cmd/epo
+go build -ldflags "-s -w -H=windowsgui" -o build\epo-daemon.exe ./cmd/epo-daemon
+# GUI：wails CLI 锁版本，必须在 cmd/epo-gui 内执行（否则找不到 wails.json）
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
+cd cmd/epo-gui
+wails build -platform windows/amd64 -webview2 browser -ldflags "-s -w"
 ```
 
-CI（windows-latest）：
+前端是手写 HTML/CSS/JS，`wails.json` 的 `frontend:install` 与 `frontend:build` 均为空，构建过程不调用 npm。
 
-```yaml
-on: { push: { tags: ["v*"] } }
-permissions:
-  contents: write          # 新仓库 GITHUB_TOKEN 默认只读，缺这行发布必然失败
-jobs:
-  build:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: "1.21" }
-      - uses: actions/setup-node@v4
-        with: { node-version: "20" }
-      - run: npm ci
-        working-directory: cmd/epo-gui/frontend
-      - run: go test ./...
-      - run: go build -ldflags "-s -w" -o epo.exe ./cmd/epo
-      - run: go build -ldflags "-s -w" -H windowsgui -o epo-daemon.exe ./cmd/epo-daemon
-      # wails CLI 必须锁版本，@latest 不可复现
-      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.9.2
-      # wails 必须在 cmd/epo-gui 内执行，否则找不到 wails.json
-      - run: wails build -platform windows/amd64
-        working-directory: cmd/epo-gui
-      - name: Checksums
-        run: |
-          Get-FileHash epo.exe -Algorithm SHA256 | Out-File checksums.txt
-          Get-FileHash epo-daemon.exe -Algorithm SHA256 | Out-File checksums.txt -Append
-          Get-FileHash cmd/epo-gui/build/bin/epo-gui.exe -Algorithm SHA256 | Out-File checksums.txt -Append
-      - name: Publish
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            epo.exe
-            epo-daemon.exe
-            cmd/epo-gui/build/bin/epo-gui.exe
-            checksums.txt
+**自动发布**（`.github/workflows/release.yml`，推送 `v*` tag 触发）：
+
+| 步骤 | 内容 |
+|---|---|
+| 构建 | `epo.exe`、`epo-daemon.exe`（`-H=windowsgui`）、`epo-gui.exe`（wails v2.10.2，无 Node） |
+| 校验 | 三个 exe 逐个生成 SHA256，写入 `checksums.txt` |
+| 打包 | `epo-windows-x64.zip`：三个 exe + README + checksums |
+| 发布 | zip + zip 的 SHA256 附件，自动生成 Release Notes |
+| 权限 | `contents: write`（新仓库 GITHUB_TOKEN 默认只读，缺这行发布必然失败） |
+
+发布命令：
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-分发：GitHub Release 主源，**Gitee 同步镜像**（目标人群网络可达性）。无自动更新，README 说明升级方式。无代码签名 → SmartScreen 会提示"未知发布者"，属于已知且不可消除的限制。
+分发：GitHub Release 主源，可选 Gitee 镜像。无自动更新，升级方式为下载新 zip 覆盖 exe。无代码签名 → SmartScreen 提示"未知发布者"，属已知且不可消除的限制。
 
 ---
 

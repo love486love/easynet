@@ -11,6 +11,7 @@ import (
 	"github.com/love486love/epo-2026/internal/app"
 	"github.com/love486love/epo-2026/internal/config"
 	"github.com/love486love/epo-2026/internal/logx"
+	"github.com/love486love/epo-2026/internal/state"
 )
 
 func main() {
@@ -43,6 +44,8 @@ func recordError(err error) {
 	if derr != nil {
 		return
 	}
+	// 写进状态快照，界面能直接看到失败原因（例如"读取凭据失败"）。
+	_ = state.Write(dir, state.Snapshot{State: "stopped", Message: "启动失败: " + err.Error()})
 	logger, closeLog, lerr := logx.New(filepath.Join(dir, "logs"))
 	if lerr != nil {
 		return

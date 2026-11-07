@@ -19,7 +19,7 @@ import (
 	"github.com/love486love/epo-2026/internal/session"
 )
 
-const version = "0.1.0-dev"
+const version = "0.1.0"
 
 func main() {
 	if len(os.Args) < 2 {
