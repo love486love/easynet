@@ -7,11 +7,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"fyne.io/systray"
 	"github.com/love486love/epo-2026/internal/config"
 	"github.com/love486love/epo-2026/internal/state"
+)
+
+var (
+	trayUser32       = syscall.NewLazyDLL("user32.dll")
+	procFindWindowW  = trayUser32.NewProc("FindWindowW")
+	procPostMessageW = trayUser32.NewProc("PostMessageW")
+)
+
+const (
+	guiWindowTitle = "epo · 校园网自动认证"
+	wmClose        = 0x0010
 )
 
 //go:embed icons/tray.ico
@@ -48,11 +61,24 @@ func onReady() {
 	go refreshStatus(mStatus)
 }
 
-// onExit 在托盘退出时请求守护停止；守护会在下一轮循环检查后收尾。
+// onExit 在托盘退出时请求守护停止，并把已打开的界面窗口一起关掉；
+// 守护会在下一轮循环检查后收尾。
 func onExit() {
 	if dir, err := config.UserDir(); err == nil {
 		_ = state.RequestStop(dir)
 	}
+	closeGUIWindow()
+}
+
+// closeGUIWindow 用窗口标题找到 epo-gui 主窗口并发送 WM_CLOSE。
+// 界面没打开时 FindWindow 返回 0，直接忽略。
+func closeGUIWindow() {
+	title, _ := syscall.UTF16PtrFromString(guiWindowTitle)
+	hwnd, _, _ := procFindWindowW.Call(0, uintptr(unsafe.Pointer(title)))
+	if hwnd == 0 {
+		return
+	}
+	procPostMessageW.Call(hwnd, wmClose, 0, 0)
 }
 
 // refreshStatus 每 2 秒把守护快照映射为菜单里的一行文字。
