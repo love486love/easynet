@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -228,6 +229,8 @@ func readCredential(path string) (portal.Credential, error) {
 	if err != nil {
 		return portal.Credential{}, fmt.Errorf("读取凭据失败: %w", err)
 	}
+	// Windows PowerShell 5.1 的 UTF8 编码会带 BOM，json 解析器不接受。
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	var f credentialFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		return portal.Credential{}, fmt.Errorf("解析凭据失败: %w", err)
