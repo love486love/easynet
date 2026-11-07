@@ -227,6 +227,8 @@
   .hint { color: var(--muted); font-size: 12px; margin-top: 12px; line-height: 1.7; }
   .hint code { background: var(--hover); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
 
+  .log-bar { display: flex; gap: 8px; margin-bottom: 10px; }
+
   pre {
     background: var(--input-bg); border: 1px solid var(--line); border-radius: 10px;
     padding: 12px 14px; height: 380px; overflow: auto; margin: 0;
@@ -423,7 +425,12 @@
       <section class="page" id="page-logs">
         <h2 class="page-title">运行日志</h2>
         <div class="page-sub">来自 %LOCALAPPDATA%\epo\logs\epo.log，每 5 秒刷新</div>
+        <div class="log-bar">
+          <button class="btn" onclick="exportLogs()">导出日志</button>
+          <button class="btn" onclick="openLogsDir()">打开日志目录</button>
+        </div>
         <pre id="logs">加载中…</pre>
+        <div class="msg" id="logMsg"></div>
       </section>
 
       <section class="page" id="page-about">
@@ -710,6 +717,40 @@ async function refresh() {
   await loadLogs();
   await loadDaemon();
   await loadAccounts();
+}
+
+function setLogMsg(text, ok) {
+  const el = document.getElementById('logMsg');
+  el.textContent = text || '';
+  el.className = 'msg ' + (ok === true ? 'ok' : ok === false ? 'bad' : '');
+}
+
+async function exportLogs() {
+  if (!App()) return;
+  if (!RT() || !RT().SaveFileDialog) { setLogMsg('当前环境不支持保存对话框', false); return; }
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  try {
+    const path = await RT().SaveFileDialog({
+      Title: '导出运行日志',
+      DefaultFilename: 'epo-log-' + stamp + '.txt',
+      Filters: [{ DisplayName: '文本文件 (*.txt)', Pattern: '*.txt' }],
+    });
+    if (!path) return;
+    const msg = await App().ExportLog(path);
+    setLogMsg(msg, true);
+  } catch (e) {
+    setLogMsg(String(e), false);
+  }
+}
+
+async function openLogsDir() {
+  if (!App()) return;
+  try {
+    const msg = await App().OpenLogsDir();
+    setLogMsg(msg, true);
+  } catch (e) {
+    setLogMsg(String(e), false);
+  }
 }
 
 async function loadLogs() {
