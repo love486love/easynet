@@ -85,7 +85,7 @@ try {
     if ($proc.HasExited) {
         Warn "守护启动后立即退出（退出码 $($proc.ExitCode)）"
         if (Test-Path $logFile) {
-            Get-Content $logFile -Tail 5 | ForEach-Object { "    $_" }
+            Get-Content $logFile -Tail 5 -Encoding UTF8 | ForEach-Object { "    $_" }
         } else {
             "    （未生成日志，说明在创建日志前就失败了）"
         }
@@ -113,8 +113,26 @@ try {
         }
     }
 
+    # 网络已恢复后，再等最多 15 秒确认"是守护自己登上去的"
+    $confirmed = $false
+    $trustFile = Join-Path $dir 'trusted_macs.json'
     if ($null -ne $recoverSeconds) {
-        Ok "已自动恢复，总耗时约 $recoverSeconds 秒（含脚本 2 秒轮询误差）"
+        $waitStart = Get-Date
+        while (((Get-Date) - $waitStart).TotalSeconds -lt 15) {
+            if ((Test-Path $trustFile) -or ((Test-Path $logFile) -and
+                ((Get-Content $logFile -Raw -Encoding UTF8) -match '登录成功'))) {
+                $confirmed = $true
+                break
+            }
+            Start-Sleep -Seconds 1
+        }
+    }
+
+    if ($null -ne $recoverSeconds -and $confirmed) {
+        Ok "守护已完成自动重登，网络恢复耗时约 $recoverSeconds 秒（含 2 秒轮询误差）"
+    } elseif ($null -ne $recoverSeconds) {
+        Warn "网络已恢复（约 $recoverSeconds 秒），但日志未出现“登录成功”"
+        Warn "可能是你手动登录，或守护在完成复核前被结束；请查看上方日志"
     } elseif ($sawOffline) {
         Warn "检测到了掉线，但在 $TimeoutSec 秒内没有恢复，请检查日志"
     } else {
@@ -124,17 +142,16 @@ try {
     # 5. 输出证据
     Info "最近日志（$logFile）："
     if (Test-Path $logFile) {
-        Get-Content $logFile -Tail 12 | ForEach-Object { "    $_" }
+        Get-Content $logFile -Tail 12 -Encoding UTF8 | ForEach-Object { "    $_" }
     } else {
         "    （暂无日志）"
     }
 
-    $trustFile = Join-Path $dir 'trusted_macs.json'
     if (Test-Path $trustFile) {
         Ok "TOFU 信任文件："
-        Get-Content $trustFile | ForEach-Object { "    $_" }
+        Get-Content $trustFile -Encoding UTF8 | ForEach-Object { "    $_" }
     } else {
-        Warn "尚未生成 TOFU 信任文件（本次可能没有触发登录）"
+        Warn "尚未生成 TOFU 信任文件（本次未确认发生自动登录）"
     }
 }
 finally {
