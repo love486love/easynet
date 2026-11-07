@@ -321,7 +321,7 @@
           <span>开机自启</span>
           <div class="switch" id="autoSwitch" onclick="toggleAutostart()"></div>
         </div>
-        <div class="ver" id="ver">easynet v0.3.0</div>
+        <div class="ver" id="ver">easynet v0.4.0</div>
       </div>
     </aside>
 
@@ -441,7 +441,9 @@
       <section class="page" id="page-about">
         <h2 class="page-title">关于</h2>
         <div class="page-sub">江西农业大学校园网自动认证工具</div>
-        <div class="about-row"><span>版本</span><span>v0.3.0</span></div>
+        <div class="about-row"><span>版本</span><span>v0.4.0</span></div>
+        <div class="about-row"><span>检查更新</span><span class="link" onclick="checkUpdate()">立即检查</span></div>
+        <div class="msg" id="updateMsg"></div>
         <div class="about-row"><span>新手引导</span><span class="link" onclick="startTutorial()">重新播放</span></div>
         <div class="about-row"><span>仓库</span><span class="link" onclick="openRepo()">github.com/love486love/easynet</span></div>
         <div class="about-row"><span>协议</span><span>MIT</span></div>
@@ -844,6 +846,31 @@ async function toggleAutostart() {
     await App().SetAutostart(!s.enabled);
     await loadAutostart();
   } catch (e) { setMsg(String(e), false); }
+}
+
+async function checkUpdate() {
+  if (!App()) return;
+  const el = document.getElementById('updateMsg');
+  el.textContent = '正在检查…';
+  el.className = 'msg';
+  try {
+    const u = await App().CheckUpdate();
+    if (u.has_update) {
+      el.className = 'msg ok';
+      el.textContent = '发现新版本 v' + u.latest + '（当前 v' + u.current + '）';
+      const a = document.createElement('span');
+      a.className = 'link';
+      a.textContent = '  去下载';
+      a.onclick = function () { RT() && RT().BrowserOpenURL(u.url); };
+      el.appendChild(a);
+    } else {
+      el.className = 'msg ok';
+      el.textContent = '已是最新版本 v' + u.current;
+    }
+  } catch (e) {
+    el.className = 'msg bad';
+    el.textContent = (e && e.message) ? e.message : String(e);
+  }
 }
 
 /* ---------- 新手引导 ---------- */

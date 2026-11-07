@@ -2,7 +2,7 @@
 ; 版本号由 CI 通过 /DMyAppVersion=<tag> 注入，本地默认 0.3.0。
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.3.0"
+  #define MyAppVersion "0.4.0"
 #endif
 
 #define MyAppName "easynet"
