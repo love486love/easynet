@@ -19,6 +19,7 @@ import (
 	"github.com/love486love/epo-2026/internal/portal"
 	"github.com/love486love/epo-2026/internal/portal/drcom"
 	"github.com/love486love/epo-2026/internal/probe"
+	"github.com/love486love/epo-2026/internal/session"
 	"github.com/love486love/epo-2026/internal/trust"
 )
 
@@ -109,7 +110,7 @@ func cmdDaemon(args []string) error {
 			return portal.Result{Code: 6, Message: niErr.Error()}, niErr
 		}
 
-		ep, warns := endpointFromEvidence(prof, ev)
+		ep, warns := session.EndpointFromEvidence(prof, ev)
 		for _, w := range warns {
 			logger.Warn("网关参数告警", "detail", w)
 		}
@@ -137,7 +138,7 @@ func cmdDaemon(args []string) error {
 
 	runErr := daemon.Run(ctx, daemon.Deps{
 		Policy: prof.Policy,
-		Probe:  func(ctx context.Context) (portal.State, probe.Evidence, error) { return probeOnce(ctx, prof) },
+		Probe:  func(ctx context.Context) (portal.State, probe.Evidence, error) { return session.ProbeOnce(ctx, prof) },
 		Login:  loginFn,
 		Log:    logger,
 		OnVerified: func() {
