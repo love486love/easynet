@@ -30,9 +30,6 @@ PrivilegesRequired=lowest
 OutputDir=..\dist-installer
 OutputBaseFilename=epo-setup-{#MyAppVersion}
 
-[Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
-
 [Files]
 Source: "..\dist\epo-gui.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\epo-daemon.exe"; DestDir: "{app}"; Flags: ignoreversion
