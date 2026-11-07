@@ -1,4 +1,4 @@
-; Inno Setup 脚本：生成带标准卸载项（unins000.exe）的安装包。
+﻿; Inno Setup 脚本：生成带标准卸载项（unins000.exe）的安装包。
 ; 版本号由 CI 通过 /DMyAppVersion=<tag> 注入，本地默认 0.1.0。
 
 #ifndef MyAppVersion
@@ -30,6 +30,9 @@ PrivilegesRequired=lowest
 OutputDir=..\dist-installer
 OutputBaseFilename=epo-setup-{#MyAppVersion}
 
+[Languages]
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
+
 [Files]
 Source: "..\dist\epo-gui.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\epo-daemon.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -51,3 +54,12 @@ Filename: "{cmd}"; Parameters: "/c taskkill /IM epo-gui.exe /F"; Flags: runhidde
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{localappdata}\epo"
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+    MsgBox('卸载完成。' + #13#10 + #13#10 +
+      '如果安装目录中还有残留文件（例如 unins000.exe、unins000.dat 或 log 文件夹），' +
+      '可以直接把整个安装文件夹删除。', mbInformation, MB_OK);
+end;
