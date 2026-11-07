@@ -22,24 +22,34 @@ var ErrLogoutUnverified = errors.New("登出接口未实测")
 
 // Client 是 ePortal 协议的 HTTP 实现。
 type Client struct {
-	http *http.Client
+	http     *http.Client
+	suffixes map[string]string
 }
 
-// New 返回默认客户端（整体超时 10s）。
+// New 返回默认客户端（使用内置运营商后缀表，整体超时 10s）。
 func New() *Client {
 	return &Client{http: &http.Client{Timeout: 10 * time.Second}}
+}
+
+// NewWithSuffixes 使用 profile 提供的运营商后缀表，覆盖内置默认值。
+func NewWithSuffixes(suffixes map[string]string) *Client {
+	return &Client{
+		http:     &http.Client{Timeout: 10 * time.Second},
+		suffixes: suffixes,
+	}
 }
 
 func (c *Client) Name() string { return "drcom-eportal" }
 
 // Login 完成一次认证。所有网关参数从 ep.Extra 获取，
-// 这些值由前置的探针重定向解析得到。
+// 这些值由前置的探针重定向解析得到；缺失时不阻断，仅由调用方告警。
 func (c *Client) Login(ctx context.Context, ep portal.Endpoint, cred portal.Credential) (portal.Result, error) {
 	params := LoginParams{
 		Credential: cred,
 		UserIP:     ep.Extra["userip"],
 		UserMAC:    ep.Extra["usermac"],
 		AcIP:       ep.Extra["wlanacip"],
+		Suffixes:   c.suffixes,
 		Extra:      ep.Extra,
 	}
 

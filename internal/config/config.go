@@ -27,16 +27,23 @@ type PortalConfig struct {
 	LoginPath string `json:"login_path"`
 }
 
+// Probe 是一个探针：url 为地址，expect 为正常状态下正文中必然出现的片段。
+// expect 必须能在前 8 KB 内命中，且建议使用 ASCII 片段（页面多为 GBK 编码）。
+type Probe struct {
+	URL    string `json:"url"`
+	Expect string `json:"expect"`
+}
+
 type NetworkConfig struct {
-	SSID         string   `json:"ssid"`
-	PrimaryProbe string   `json:"primary_probe"`
-	ProbeHosts   []string `json:"probe_hosts"`
-	BackupProbe  string   `json:"backup_probe"`
+	SSID       string   `json:"ssid"`
+	Probes     []Probe  `json:"probes"`
+	ProbeHosts []string `json:"probe_hosts"`
 }
 
 type LoginConfig struct {
-	Carrier     string            `json:"carrier"`
-	ExtraParams map[string]string `json:"extra_params"`
+	Carrier         string            `json:"carrier"`
+	CarrierSuffixes map[string]string `json:"carrier_suffixes"`
+	ExtraParams     map[string]string `json:"extra_params"`
 }
 
 type PolicyConfig struct {
@@ -62,13 +69,22 @@ func Default() Profile {
 			LoginPath: "/eportal/portal/login",
 		},
 		Network: NetworkConfig{
-			SSID:         "JXAU-Stu",
-			PrimaryProbe: "http://www.jxau.edu.cn/",
-			ProbeHosts:   []string{"www.jxau.edu.cn", "jxau.edu.cn"},
-			BackupProbe:  "http://www.baidu.com/",
+			SSID: "JXAU-Stu",
+			Probes: []Probe{
+				{URL: "http://www.jxau.edu.cn/?epo=1", Expect: "jxau.edu.cn"},
+				{URL: "http://www.baidu.com/?epo=1", Expect: "baidu.com"},
+			},
+			ProbeHosts: []string{"www.jxau.edu.cn", "jxau.edu.cn"},
 		},
 		Login: LoginConfig{
 			Carrier: "cmcc",
+			// 移动实测 @cmcc；电信/联通取自同类 ePortal 项目实测值，待本地验证。
+			CarrierSuffixes: map[string]string{
+				"cmcc":   "cmcc",
+				"ctcc":   "telecom",
+				"cucc":   "unicom",
+				"campus": "",
+			},
 			ExtraParams: map[string]string{
 				"jsVersion":     "4.2.1",
 				"terminal_type": "1",
@@ -77,8 +93,9 @@ func Default() Profile {
 			},
 		},
 		Policy: PolicyConfig{
-			OnlineIntervalSec:  120,
-			OfflineIntervalSec: 60,
+			// 探测间隔直接决定掉线恢复速度，参考同类项目实测值取 5 秒。
+			OnlineIntervalSec:  5,
+			OfflineIntervalSec: 3,
 			BackoffMaxSec:      60,
 			MaxLoginsPer10Min:  3,
 			ShortSessionSec:    60,
@@ -127,8 +144,8 @@ func (p Profile) Validate() error {
 	if p.Network.SSID == "" {
 		return fmt.Errorf("network.ssid 不能为空")
 	}
-	if p.Network.PrimaryProbe == "" {
-		return fmt.Errorf("network.primary_probe 不能为空")
+	if len(p.Network.Probes) == 0 {
+		return fmt.Errorf("network.probes 不能为空")
 	}
 	if p.Login.Carrier == "" {
 		return fmt.Errorf("login.carrier 不能为空")

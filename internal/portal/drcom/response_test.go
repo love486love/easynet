@@ -38,6 +38,17 @@ func TestParseLoginFailure(t *testing.T) {
 	}
 }
 
+func TestParseAlreadyOnline(t *testing.T) {
+	raw := []byte(`dr1003({"result":0,"msg":"您已经在线，无需重复登录"});`)
+	res, err := ParseLoginResponse(raw)
+	if err != nil {
+		t.Fatalf("意外错误: %v", err)
+	}
+	if !res.OK {
+		t.Fatal("“已经在线”应视为成功，否则守护进程会反复重试")
+	}
+}
+
 func TestParsePlainJSON(t *testing.T) {
 	raw := []byte(`{"result":1,"msg":"ok"}`)
 	res, err := ParseLoginResponse(raw)

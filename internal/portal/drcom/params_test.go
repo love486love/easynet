@@ -17,8 +17,8 @@ func TestAccount(t *testing.T) {
 		wantErr bool
 	}{
 		{"移动", "cmcc", ",0,20240001@cmcc", false},
-		{"电信", "ctcc", ",0,20240001@dx", false},
-		{"联通", "cucc", ",0,20240001@lt", false},
+		{"电信", "ctcc", ",0,20240001@telecom", false},
+		{"联通", "cucc", ",0,20240001@unicom", false},
 		{"校园", "campus", ",0,20240001", false},
 		{"大小写", "CMCC", ",0,20240001@cmcc", false},
 		{"未知运营商", "foo", "", true},
@@ -74,6 +74,20 @@ func TestURLEndpoint(t *testing.T) {
 		if !strings.Contains(u, w) {
 			t.Errorf("URL 缺少 %q\n实际: %s", w, u)
 		}
+	}
+}
+
+func TestAccountOverrideSuffix(t *testing.T) {
+	p := LoginParams{
+		Credential: portal.Credential{Username: "20240001", Carrier: "ctcc"},
+		Suffixes:   map[string]string{"ctcc": "dx"},
+	}
+	got, err := p.Account()
+	if err != nil {
+		t.Fatalf("意外错误: %v", err)
+	}
+	if got != ",0,20240001@dx" {
+		t.Fatalf("profile 覆盖应生效，got %q", got)
 	}
 }
 
