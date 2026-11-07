@@ -19,7 +19,10 @@ type loginPayload struct {
 }
 
 // ParseLoginResponse 解析登录接口响应。
-// 成功判定只认 result==1，其余一律按拒绝处理并透传服务端 msg。
+//
+// 成功判定：result==1，或服务端明确表示"已经在线"。
+// 后者是同一网关在重复登录时的正常返回，按失败处理会导致守护进程
+// 误以为没登上去，从而反复重试。
 func ParseLoginResponse(raw []byte) (portal.Result, error) {
 	body := strings.TrimSpace(string(raw))
 	if body == "" {
@@ -35,10 +38,10 @@ func ParseLoginResponse(raw []byte) (portal.Result, error) {
 	}
 
 	res := portal.Result{
-		OK:      p.Result == 1,
 		Message: p.Msg,
 		RetCode: p.RetCode,
 	}
+	res.OK = p.Result == 1 || strings.Contains(p.Msg, "已经在线")
 	if !res.OK {
 		res.Code = 2 // 认证被拒
 	}

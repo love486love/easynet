@@ -19,8 +19,7 @@ type Evidence struct {
 	Body       []byte
 }
 
-// 拦截页特征串。实测离线时响应体为 WISPA XML，其余为各版本门户的常见标记。
-// 刻意不使用裸词 eportal / user_password，避免正常页面被误判。
+// 拦截页特征串，仅在未配置 expect 时作为兜底判据。
 var loginMarkers = [][]byte{
 	[]byte("WISPAccessGatewayParam"),
 	[]byte("MessageType>110"),
@@ -68,9 +67,12 @@ func looksLikePortal(body []byte) bool {
 }
 
 // Judge 依据 docs/TECH_DESIGN.md §6.1 判定在线状态。
-// 未覆盖的分支一律按未认证处理：宁可多试一次，也不能漏登。
-func Judge(probeURL string, allowedHosts []string, ev Evidence) portal.State {
-	allowed := allowedHosts
+//
+// expect 是探针地址在正常（已认证）状态下必然出现的正文片段。
+// 只要配置了 expect，2xx 就必须命中它才算在线——这是为了防住
+// "网关注入登录页但返回 200" 的透明劫持：只看状态码或只看
+// "不像登录页" 都可能误判为在线。
+func Judge(probeURL string, allowedHosts []string, expect string, ev Evidence) portal.State {
 	probeHost := hostOf(probeURL)
 
 	switch {
@@ -83,12 +85,19 @@ func Judge(probeURL string, allowedHosts []string, ev Evidence) portal.State {
 			return portal.StateOffline
 		}
 		// 到达源站才会跳转到自己站点；跳到门户则说明被拦截。
-		if locHost == probeHost || sameSite(locHost, allowed) {
+		if locHost == probeHost || sameSite(locHost, allowedHosts) {
 			return portal.StateOnline
 		}
 		return portal.StateOffline
 
 	case ev.StatusCode >= 200 && ev.StatusCode < 300:
+		if expect != "" {
+			if bytes.Contains(bytes.ToLower(ev.Body), []byte(strings.ToLower(expect))) {
+				return portal.StateOnline
+			}
+			return portal.StateOffline
+		}
+		// 未配置 expect 时退回特征排除法，判据弱一档。
 		if looksLikePortal(ev.Body) {
 			return portal.StateOffline
 		}

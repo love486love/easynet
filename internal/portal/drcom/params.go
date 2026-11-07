@@ -11,11 +11,12 @@ import (
 	"github.com/love486love/epo-2026/internal/portal"
 )
 
-// 运营商后缀。移动实测为 @cmcc；电信/联通沿用 Dr.COM 惯例，尚未实测。
-var carrierSuffix = map[string]string{
+// 默认运营商后缀。移动为本地实测值；电信/联通取自同类 ePortal 项目实测，
+// 尚未在本校验证，因此允许通过 profile 的 carrier_suffixes 覆盖。
+var defaultCarrierSuffix = map[string]string{
 	"cmcc":   "cmcc",
-	"ctcc":   "dx",
-	"cucc":   "lt",
+	"ctcc":   "telecom",
+	"cucc":   "unicom",
 	"campus": "",
 }
 
@@ -23,8 +24,9 @@ var carrierSuffix = map[string]string{
 type LoginParams struct {
 	Credential portal.Credential
 	UserIP     string // 优先取 302 的 Location.userip
-	UserMAC    string // 302 的 Location.usermac，必须原样回传
+	UserMAC    string // 302 的 Location.usermac，原样回传
 	AcIP       string // 302 的 Location.wlanacip
+	Suffixes   map[string]string
 	Extra      map[string]string
 }
 
@@ -40,10 +42,17 @@ func extraOr(m map[string]string, key, def string) string {
 // Account 生成 user_account，格式为 ",0,<学号>[@<运营商后缀>]"。
 func (p LoginParams) Account() (string, error) {
 	carrier := strings.ToLower(strings.TrimSpace(p.Credential.Carrier))
-	suffix, ok := carrierSuffix[carrier]
-	if !ok {
-		return "", fmt.Errorf("未知运营商 %q", p.Credential.Carrier)
+
+	table := p.Suffixes
+	if len(table) == 0 {
+		table = defaultCarrierSuffix
 	}
+
+	suffix, ok := table[carrier]
+	if !ok {
+		return "", fmt.Errorf("未知运营商 %q（可在 profile 的 carrier_suffixes 中补充）", p.Credential.Carrier)
+	}
+
 	account := ",0," + p.Credential.Username
 	if suffix != "" {
 		account += "@" + suffix

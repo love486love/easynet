@@ -32,7 +32,8 @@ func New() *Client {
 }
 
 // Check 请求探针地址并给出判定结果。
-func (c *Client) Check(ctx context.Context, probeURL string, allowedHosts []string) (portal.State, Evidence, error) {
+// expect 为正常响应中必然出现的正文片段，空串表示退回特征排除法。
+func (c *Client) Check(ctx context.Context, probeURL string, allowedHosts []string, expect string) (portal.State, Evidence, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
 	if err != nil {
 		return portal.StateUnknown, Evidence{}, err
@@ -59,7 +60,9 @@ func (c *Client) Check(ctx context.Context, probeURL string, allowedHosts []stri
 	}
 	ev.Body = head[:n]
 
-	if suspicious(resp) {
+	// 配置了 expect 但首段没命中时，再多读一段，避免特征恰好落在 1 KB 之后。
+	needMore := expect != "" && !bytesContainsFold(ev.Body, expect)
+	if suspicious(resp) || needMore {
 		rest := make([]byte, maxBody-firstChunk)
 		m, err := io.ReadFull(resp.Body, rest)
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
@@ -68,7 +71,11 @@ func (c *Client) Check(ctx context.Context, probeURL string, allowedHosts []stri
 		ev.Body = append(ev.Body, rest[:m]...)
 	}
 
-	return Judge(probeURL, allowedHosts, ev), ev, nil
+	return Judge(probeURL, allowedHosts, expect, ev), ev, nil
+}
+
+func bytesContainsFold(haystack []byte, needle string) bool {
+	return strings.Contains(strings.ToLower(string(haystack)), strings.ToLower(needle))
 }
 
 // suspicious 判断是否值得继续读正文：短页面、长度未知、或网关特征。

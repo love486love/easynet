@@ -222,7 +222,7 @@ IDLE → PROBING → ONLINE
      ONLINE → BACKOFF（探活连续失败）→ PROBING
 ```
 
-- 周期探活：空闲期 60–120s（流量优化，见 §6.1）；掉线/失败后走退避 2→5→10→30→60s；Wi-Fi 事件触发时立即探活
+- 周期探活：在线期 **5s**；掉线后立即登录，失败 3s 快速重试，连续失败 3 次后 45→60s 封顶；Wi-Fi 事件触发时立即探活
 - **连续 2 次同结论才切换状态**，抑制抖动
 - **全局频率上限**：10 分钟内最多 3 次登录
 - **短存活检测**：登录成功但存活 < 60s，判为异常，进入长退避（60s）而非重置
@@ -257,10 +257,12 @@ IDLE → PROBING → ONLINE
 
 **主备双探针**：
 
-| | 地址 | 作用 |
-|---|---|---|
-| 主 | `http://www.jxau.edu.cn/?epo=<rand>` | 实测：离线 302 到门户带全参；在线 200/206 |
-| 备 | `http://www.baidu.com/` | 主探针结论异常时交叉验证 |
+| | 地址 | 期望串 `expect` | 作用 |
+|---|---|---|---|
+| 主 | `http://www.jxau.edu.cn/?epo=<rand>` | `jxau.edu.cn` | 实测：离线 302 到门户带全参；在线 200/206 且正文命中 expect |
+| 备 | `http://www.baidu.com/` | `baidu.com` | 主探针异常时交叉验证 |
+
+> `expect` 必须是正常状态下正文前 8 KB 内必然出现的片段，**优先使用 ASCII**——学校页面多为 GBK 编码，中文串按 UTF-8 比对必然失败。
 
 两者结论不一致 → 按**未认证**处理并记日志（宁可重试，不可漏登）。
 
@@ -272,8 +274,8 @@ IDLE → PROBING → ONLINE
 |---|---|
 | **在线** | 3xx 且 `Location` 主机 **与探针同站**（精确主机相等，或 eTLD+1 命中 profile 的 `probe_hosts`，如 `jxau.edu.cn`） |
 | **未认证** | 3xx 且 Location 主机 **不同站**（内网 IP、`a79.htm` / `eportal`、或任何外来主机） |
-| **在线** | **2xx（含 206）** 且响应体**无**登录页特征 |
-| **未认证** | 2xx 且响应体**含**登录页特征 |
+| **在线** | **2xx（含 206）** 且响应体**命中**探针的 `expect` 串 |
+| **未认证** | 2xx 但**未命中** `expect`（含空正文、透明劫持页） |
 | **未认证** | 其余所有未覆盖组合（未知分支保守处理） |
 | — | 5xx / 超时 / DNS 失败：**不计为证据**；两个探针都失败 → **Code 7（探针不可用）**，不得归为"网络不可达" |
 
@@ -285,7 +287,9 @@ IDLE → PROBING → ONLINE
 >
 > v0.4 曾把「3xx 指向公网 / 301 到 HTTPS」判为未认证，**方向是反的**：已认证时学校站点自身就会 301 跳 HTTPS，那恰恰是在线证据。该错误由第二轮评审指出，此处已修正。
 
-**登录页特征串（只在"疑似拦截页"上匹配）**：`WISPAccessGatewayParam`、`MessageType>110`、`DDDDD`、`upass`、`Dr.COMWebLogin`、`ACSetting`、`<input type="password"`。
+**判定方向（v0.9 修正）**：优先用**正向期望**——2xx 必须命中 `expect` 才算在线。原因是校园网关常见**透明劫持**：未认证时仍返回 200，只是正文被换成登录页。只做"排除登录页特征"会漏判任何未收录的新模板。
+
+**登录页特征串仅是兜底**（仅当 `expect` 未配置时使用）：`WISPAccessGatewayParam`、`MessageType>110`、`DDDDD`、`upass`、`Dr.COMWebLogin`、`ACSetting`、`<input type="password"`。
 
 **不做裸词匹配**：`eportal`、`user_password` 这类通用词可能出现在正常页面的脚本或文本里，一旦裸匹配，**在线会被误判成未认证**（与 206 那个坑同类）。
 
@@ -321,8 +325,8 @@ IDLE → PROBING → ONLINE
 | 只读响应头 | 请求带 `Range: bytes=0-1023`；服务端忽略 Range 时，**读满 1 KB 立即关闭连接**。判定所需的状态码与 `Location` 全在头部 |
 | 正文按需 | 仅当「200 且疑似拦截页」才继续读，**上限 8 KB** 用于特征匹配；其余情况一律不读 |
 | 单次预算 | **≤ 10 KB**（头部 + 最多 8 KB 正文） |
-| 周期分级 | 空闲期 **60–120s**；掉线/失败后按退避；Wi-Fi 连接事件触发**立即探活**，不依赖周期 |
-| 全天总量 | < 10 MB（对比：完整下载学校主页约 **800 MB/天**） |
+| 周期分级 | 在线期 **5s**（掉线发现延迟即恢复延迟）；掉线后**立即登录**，失败 3s 快速重试；连续失败 3 次后 45→60s 封顶 |
+| 全天总量 | **≈ 7 MB**（同类项目实测 0.4 KB/次 × 5s；对比：完整下载学校主页约 800 MB/天） |
 
 > 原因：学校主页 HTML 通常 100–300 KB，若每 30 秒完整拉取一次，仅探活一项每天就产生近 1 GB 流量，在计费校园网环境下不可接受，也会在网关日志留下异常特征。
 
@@ -437,13 +441,16 @@ dr1003({"result":1,"msg":"Portal协议认证成功！"});
   "portal": { "type": "drcom-eportal", "host": "172.16.121.9", "port": 801 },
   "network": {
     "ssid": "JXAU-Stu",
-    "primary_probe": "http://www.jxau.edu.cn/",
+    "probes": [
+      { "url": "http://www.jxau.edu.cn/?epo=1", "expect": "jxau.edu.cn" },
+      { "url": "http://www.baidu.com/?epo=1", "expect": "baidu.com" }
+    ],
     "probe_hosts": ["www.jxau.edu.cn", "jxau.edu.cn"],
-    "backup_probe": "http://www.baidu.com/",
     "gateway_mac": []
   },
   "login": {
     "carrier": "cmcc",
+    "carrier_suffixes": { "cmcc": "cmcc", "ctcc": "telecom", "cucc": "unicom", "campus": "" },
     "extra_params": {
       "jsVersion": "4.2.1",
       "terminal_type": "1",
@@ -452,8 +459,8 @@ dr1003({"result":1,"msg":"Portal协议认证成功！"});
     }
   },
   "policy": {
-    "online_interval_sec": 120,
-    "offline_interval_sec": 60,
+    "online_interval_sec": 5,
+    "offline_interval_sec": 3,
     "backoff_max_sec": 60,
     "max_logins_per_10min": 3,
     "short_session_sec": 60
@@ -463,8 +470,9 @@ dr1003({"result":1,"msg":"Portal协议认证成功！"});
 
 说明：
 
-- `primary_probe` 已由 M0 实测确认，落值 `http://www.jxau.edu.cn/`；`probe_hosts` 用于"同站"比较
-- 周期语义：`online_interval_sec` = 已在线时（120s，省流量）；`offline_interval_sec` = 未认证/失败时（60s，尽快恢复）；两者都不替代事件触发
+- `probes` 每项含 `expect`（正常状态正文必现片段，优先 ASCII）；`probe_hosts` 用于 3xx 的"同站"比较
+- 周期语义：`online_interval_sec` = 在线时探测间隔（5s，直接决定掉线恢复速度）；`offline_interval_sec` = 失败后的快速重试间隔（3s）；两者都不替代事件触发
+- `login.carrier_suffixes`：移动 `cmcc` 为本地实测；电信 `telecom` / 联通 `unicom` 取自同类 ePortal 项目实测，**尚未在本校验证**，可随时覆盖
 - `jsVersion` / `terminal_type` / `login_method` / `lang` 全部进 `extra_params`，网关升级时可改配置而**无需发版**
 - `carrier` 支持 `cmcc` / `ctcc` / `cucc` / `campus`；未采集到的后缀允许用户手工填写，失败文案提示"若为电信/联通用户，请确认运营商选项"
 - `wlan_user_ip` **优先取 302 的 `Location.userip`**，缺失才回退 WLAN 接口 IPv4（多网卡场景）
@@ -598,7 +606,7 @@ jobs:
 | GUI 内存 | 仅在打开主界面时存在；关闭窗口即释放，**不参与空闲态统计** |
 | GUI 冷启动（首次，需建 WebView） | < 8 s |
 | GUI 冷启动（非首次） | < 3 s |
-| 空闲 CPU | ≈ 0（空闲期 60–120s 一次探针） |
+| 空闲 CPU | ≈ 0（在线期 5s 一次探针，单次约 2 ms） |
 
 **体积与流量预算**
 
@@ -609,7 +617,7 @@ jobs:
 | `epo-gui.exe`（Wails） | 15–22 MB | 前端 dist 直接内嵌，体积算进 exe |
 | Release zip | 14–20 MB | 三个产物压缩后 |
 | 单次探针流量 | ≤ 10 KB | 头部 + 最多 8 KB 正文（口径与 §6.1 统一） |
-| 全天探针流量 | < 10 MB | 60–120s 周期 + 事件触发；完整下载主页对照值约 800 MB/天 |
+| 全天探针流量 | ≈ 7 MB | 5s 周期、命中即停，同类项目实测 0.4 KB/次 |
 | 日志磁盘上限 | 15 MB | 5 MB × 3 轮转 |
 
 ---
@@ -753,3 +761,19 @@ jobs:
 | T3-3 | `epo login` 拉起常驻进程语义突变 | ✅ 首次提示"已启动后台守护"；提供 `--no-daemon` |
 
 **仍未完成（M1 前必做）**：会话超时/踢线后是否仍返回带参 302（T2-6）；同账号二次登录样本；密码错误等失败文案。三者都是"抓一次包"级别。
+
+## 23. v0.9 对齐成熟开源项目
+
+参考项目：[qs0712/drcom-eportal-autologin](https://github.com/qs0712/drcom-eportal-autologin)（同协议、江西实测）、[HEX9CF/CupidConnector](https://github.com/HEX9CF/CupidConnector)（Go）、[BeiningWu/shu-net-keeper](https://github.com/BeiningWu/shu-net-keeper)（Rust 多平台）、[NatsumeHSY/CampusNetClient](https://github.com/NatsumeHSY/CampusNetClient)（GUI + 服务）、[mchome/dogcom](https://github.com/mchome/dogcom)（C）。
+
+| 编号 | 参照发现 | 处置 | 落点 |
+|---|---|---|---|
+| C-1 | 网关**透明劫持**：未认证时也可能返回 200，只排除登录页特征会漏判 | 判定改为**正向期望**：2xx 必须命中 `expect` 才算在线；特征串降为兜底 | `probe/judge.go`、§6.1 |
+| C-2 | 探测间隔直接决定掉线恢复体感，同类项目从 20s 压到 5s | 在线期 **5s**、失败 **3s** 快速重试、连续失败 3 次后 45→60s 封顶；流量仍约 7 MB/天 | `config`、§6.1、§13 |
+| C-3 | 电信/联通后缀使用 `@telecom` / `@unicom`，与文档原写 `dx`/`lt` 不符且未实测 | 后缀表**配置化**（`login.carrier_suffixes`），默认改为 telecom/unicom，可随时覆盖 | `drcom/params.go`、§7 |
+| C-4 | `wlan_user_ip` / `wlan_user_mac` 实测并非认证必填 | 三参数缺失**只告警不阻断**，仍尝试登录 | `cmd/epo` |
+| C-5 | 重复登录返回"已经在线"属正常 | `result!=1` 但 msg 含"已经在线" → 判为成功 | `drcom/response.go` |
+| C-6 | 自启更稳的做法是计划任务优先、启动文件夹兜底，配合 `wscript.exe` 无窗口 | M2 按此实现，弃用单一的 `HKCU\Run` | 待实现（§5.3） |
+| C-7 | PowerShell 同类守护常驻 67–86 MB，凭据以明文存 `config.json` | 本项目 Go daemon 目标 < 40 MB、凭据 DPAPI 加密，属差异化优势，写入 README | README、§8 |
+
+**测试**：整改后 5 个包共 46 个用例全部通过（`drcom` 12、`probe` 14、`guard` 8、`creds` 2、`netinfo` 4 + 解析用例），`go build ./...` 与 `go vet ./...` 均无输出。
