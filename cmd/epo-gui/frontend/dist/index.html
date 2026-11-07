@@ -177,9 +177,34 @@
   .value.mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
 
   /* ---------- 账号 ---------- */
-  .acc-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; max-width: 760px; }
-  .acc-select { max-width: 340px; }
-  .acc-select:disabled { opacity: .6; }
+  .acc-bar { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; max-width: 760px; }
+  .acc-select { position: relative; width: 380px; max-width: 100%; user-select: none; }
+  .acc-select-face {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    background: var(--panel); border: 1px solid var(--line2); border-radius: 12px;
+    cursor: pointer; transition: border-color .15s, box-shadow .15s;
+  }
+  .acc-select-face:hover, .acc-select.open .acc-select-face {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(11, 123, 255, .12);
+  }
+  .acc-select-user { font-size: 14px; font-weight: 600; letter-spacing: .02em; }
+  .acc-select-carrier { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .acc-select-arrow { margin-left: auto; width: 14px; height: 14px; color: var(--muted); transition: transform .2s; }
+  .acc-select.open .acc-select-arrow { transform: rotate(180deg); }
+  .acc-menu {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 20;
+    background: var(--panel); border: 1px solid var(--line2); border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .18); padding: 6px;
+    max-height: 260px; overflow: auto;
+  }
+  .acc-menu[hidden] { display: none; }
+  .acc-option { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
+  .acc-option:hover { background: var(--hover); }
+  .acc-option.active { background: var(--active-bg); }
+  .acc-option-main { min-width: 0; }
+  .acc-option-user { font-size: 13.5px; font-weight: 600; }
+  .acc-option-carrier { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .acc-option-check { margin-left: auto; color: var(--accent); font-size: 14px; }
 
   .account-editor {
     background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
@@ -316,7 +341,16 @@
         <div class="page-sub">守护使用当前选中的账号自动认证；密码以 DPAPI 加密保存在本机</div>
 
         <div class="acc-bar">
-          <select class="acc-select" id="accSelect" onchange="onAccountSelect()"></select>
+          <div class="acc-select" id="accSelect">
+            <div class="acc-select-face" onclick="toggleAccountMenu(event)">
+              <div>
+                <div class="acc-select-user" id="accCurrentUser">还没有账号</div>
+                <div class="acc-select-carrier" id="accCurrentCarrier">点击选择或新增</div>
+              </div>
+              <svg class="acc-select-arrow" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg>
+            </div>
+            <div class="acc-menu" id="accMenu" hidden></div>
+          </div>
           <button class="btn ghost" onclick="newAccount()">+ 新增账号</button>
         </div>
 
@@ -502,38 +536,68 @@ async function loadAccounts() {
   if (!App()) return;
   try {
     accountsCache = await App().Accounts();
-    const sel = document.getElementById('accSelect');
-    sel.innerHTML = '';
-    if (!accountsCache.length) {
-      const opt = document.createElement('option');
-      opt.textContent = '还没有账号';
-      opt.value = '';
-      sel.appendChild(opt);
-      sel.disabled = true;
-      selectedUser = '';
-      renderEditor();
-      return;
-    }
-    sel.disabled = false;
-    accountsCache.forEach(a => {
-      const opt = document.createElement('option');
-      opt.value = a.username;
-      opt.textContent = a.username + ' · ' + carrierName(a.carrier) + (a.current ? '（当前）' : '');
-      sel.appendChild(opt);
-    });
     if (!selectedUser || !accountsCache.some(a => a.username === selectedUser)) {
       const cur = accountsCache.find(a => a.current);
-      selectedUser = (cur || accountsCache[0]).username;
+      selectedUser = accountsCache.length ? (cur || accountsCache[0]).username : '';
     }
-    sel.value = selectedUser;
+    renderAccountSelect();
     renderEditor();
   } catch (e) { }
 }
 
-function onAccountSelect() {
-  const sel = document.getElementById('accSelect');
-  if (sel.value) selectAccount(sel.value);
+function renderAccountSelect() {
+  const userEl = document.getElementById('accCurrentUser');
+  const carrierEl = document.getElementById('accCurrentCarrier');
+  const menu = document.getElementById('accMenu');
+  const cur = accountsCache.find(a => a.username === selectedUser);
+  if (cur) {
+    userEl.textContent = cur.username;
+    carrierEl.textContent = carrierName(cur.carrier) + (cur.current ? ' · 当前使用' : '');
+  } else {
+    userEl.textContent = '还没有账号';
+    carrierEl.textContent = '点击右侧「新增账号」';
+  }
+
+  menu.innerHTML = '';
+  accountsCache.forEach(a => {
+    const row = document.createElement('div');
+    row.className = 'acc-option' + (a.username === selectedUser ? ' active' : '');
+    const main = document.createElement('div');
+    main.className = 'acc-option-main';
+    const u = document.createElement('div');
+    u.className = 'acc-option-user';
+    u.textContent = a.username;
+    const c = document.createElement('div');
+    c.className = 'acc-option-carrier';
+    c.textContent = carrierName(a.carrier) + (a.current ? ' · 当前使用' : '');
+    main.appendChild(u);
+    main.appendChild(c);
+    row.appendChild(main);
+    if (a.username === selectedUser) {
+      const check = document.createElement('span');
+      check.className = 'acc-option-check';
+      check.textContent = '✓';
+      row.appendChild(check);
+    }
+    row.onclick = () => { closeAccountMenu(); selectAccount(a.username); };
+    menu.appendChild(row);
+  });
 }
+
+function toggleAccountMenu(ev) {
+  if (ev) ev.stopPropagation();
+  const menu = document.getElementById('accMenu');
+  const open = menu.hidden;
+  menu.hidden = !open;
+  document.getElementById('accSelect').classList.toggle('open', open);
+}
+
+function closeAccountMenu() {
+  document.getElementById('accMenu').hidden = true;
+  document.getElementById('accSelect').classList.remove('open');
+}
+
+document.addEventListener('click', closeAccountMenu);
 
 function renderEditor() {
   const a = accountsCache.find(x => x.username === selectedUser);
