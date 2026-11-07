@@ -83,6 +83,11 @@ func (a *App) startup(ctx context.Context) {
 	}()
 }
 
+// Version 返回当前程序版本，供界面显示。
+func (a *App) Version() string {
+	return Version
+}
+
 // Status 采集本机网络与认证状态。
 func (a *App) Status() Status {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
