@@ -250,11 +250,11 @@ func (g *guiServer) handleCred(w http.ResponseWriter, r *http.Request) {
 	}
 
 	secret := creds.Secret{Username: body.Username, Password: body.Password, Carrier: body.Carrier}
-	if err := creds.Save(g.dir, secret); err != nil {
+	if _, err := creds.SaveAccount(g.dir, secret); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"ok": "false", "message": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true", "message": "凭据已加密保存"})
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "true", "message": "账号已加密保存"})
 }
 
 func (g *guiServer) handleLogs(w http.ResponseWriter, r *http.Request) {

@@ -30,10 +30,10 @@ func cmdSaveCred(args []string) error {
 		return err
 	}
 	secret := creds.Secret{Username: cred.Username, Password: cred.Password, Carrier: cred.Carrier}
-	if err := creds.Save(dir, secret); err != nil {
+	if _, err := creds.SaveAccount(dir, secret); err != nil {
 		return err
 	}
-	fmt.Println("凭据已加密保存:", creds.Path(dir))
+	fmt.Println("账号已加密保存（当前账号）:", creds.StorePath(dir))
 	return nil
 }
 
