@@ -43,6 +43,8 @@ func main() {
 		err = cmdSaveCred(os.Args[2:])
 	case "autostart":
 		err = cmdAutostart(os.Args[2:])
+	case "gui":
+		err = cmdGui(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println(version)
 		return
@@ -66,6 +68,7 @@ func usage() {
   epo save-cred -cred 凭据文件   用 DPAPI 加密保存凭据
   epo daemon                    常驻守护（掉线自动重连）
   epo autostart install|remove|status  开关开机自启
+  epo gui                       打开本地图形界面（浏览器）
   epo version                  显示版本
 `, version)
 }
