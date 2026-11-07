@@ -313,11 +313,15 @@
         </div>
       </nav>
       <div class="sidebar-foot">
+        <div class="switch-row" title="开启后，守护发现没连校园网时会自动连回来">
+          <span>自动连接 Wi-Fi</span>
+          <div class="switch" id="wifiSwitch" onclick="toggleWifiAuto()"></div>
+        </div>
         <div class="switch-row">
           <span>开机自启</span>
           <div class="switch" id="autoSwitch" onclick="toggleAutostart()"></div>
         </div>
-        <div class="ver" id="ver">easynet v0.2.1</div>
+        <div class="ver" id="ver">easynet v0.3.0</div>
       </div>
     </aside>
 
@@ -437,7 +441,7 @@
       <section class="page" id="page-about">
         <h2 class="page-title">关于</h2>
         <div class="page-sub">江西农业大学校园网自动认证工具</div>
-        <div class="about-row"><span>版本</span><span>v0.2.1</span></div>
+        <div class="about-row"><span>版本</span><span>v0.3.0</span></div>
         <div class="about-row"><span>新手引导</span><span class="link" onclick="startTutorial()">重新播放</span></div>
         <div class="about-row"><span>仓库</span><span class="link" onclick="openRepo()">github.com/love486love/easynet</span></div>
         <div class="about-row"><span>协议</span><span>MIT</span></div>
@@ -718,6 +722,7 @@ async function refresh() {
   await loadLogs();
   await loadDaemon();
   await loadAccounts();
+  await loadWifiAuto();
 }
 
 function setLogMsg(text, ok) {
@@ -807,6 +812,29 @@ async function loadAutostart() {
     const s = await App().Autostart();
     document.getElementById('autoSwitch').classList.toggle('on', !!s.enabled);
   } catch (e) { }
+}
+
+async function loadWifiAuto() {
+  if (!App()) return;
+  try {
+    const on = !!(await App().WifiAutoEnabled());
+    document.getElementById('wifiSwitch').classList.toggle('on', on);
+  } catch (e) { }
+}
+
+async function toggleWifiAuto() {
+  if (!App()) return;
+  const sw = document.getElementById('wifiSwitch');
+  sw.style.pointerEvents = 'none';
+  try {
+    const on = !sw.classList.contains('on');
+    const msg = await App().SetWifiAutoEnabled(on);
+    setMsg(msg, true);
+  } catch (e) {
+    setMsg(String(e), false);
+  }
+  sw.style.pointerEvents = '';
+  await refresh();
 }
 
 async function toggleAutostart() {

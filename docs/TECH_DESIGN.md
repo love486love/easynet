@@ -61,6 +61,19 @@
 
 拦截页兜底特征：`WISPAccessGatewayParam`、`MessageType>110`、`DDDDD`、`upass`、`Dr.COMWebLogin`、`ACSetting`、`<input type="password"`。
 
+### 3.1 自动连接 Wi-Fi（可选，默认关闭）
+
+开关状态由 `%LOCALAPPDATA%\easynet\wifi_auto` 标记持久化（存在即开启）。
+
+开启后，守护每轮探测前检查当前 SSID：
+
+- 已经是 `JXAU-Stu`：什么都不做
+- 不是：调用 `netsh wlan connect name=<SSID> ssid=<SSID>`
+- 系统里没有该网络的 profile：先按开放网络（无加密、无 802.1X）创建一份再连
+- 连接失败后 1 分钟内不重复尝试，避免 Wi-Fi 硬件关闭时刷日志
+
+软件不会开启或关闭无线网卡，也不修改系统电源设置；Wi-Fi 被硬件开关关闭时只记录日志。
+
 ---
 
 ## 4. 进程模型
@@ -138,6 +151,7 @@
 | `%LOCALAPPDATA%\easynet\state.json` | 守护状态快照（state / message / pid / updated_at） |
 | `%LOCALAPPDATA%\easynet\stop.flag` | 停止请求 |
 | `%LOCALAPPDATA%\easynet\daemon_off` | 守护开关关闭标记（不存在即开启） |
+| `%LOCALAPPDATA%\easynet\wifi_auto` | 自动连接校园 Wi-Fi 开关标记（存在即开启，默认关闭） |
 | `%LOCALAPPDATA%\easynet\tutorial_done` | 新手引导已播放标记 |
 | `<程序目录>\log\easynet.log` | 运行日志，5 MB 轮转、保留 3 份；程序目录不可写时回退到 `%LOCALAPPDATA%\easynet\logs` |
 

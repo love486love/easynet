@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -21,6 +22,9 @@ const wmClose = 0x0010
 
 //go:embed icons/tray.ico
 var trayIcon []byte
+
+// userQuit 标记托盘退出是用户主动点的，而不是守护自己退出后被动收尾。
+var userQuit atomic.Bool
 
 // runTray 阻塞运行 Windows 托盘消息循环，直到 systray.Quit 被调用。
 func runTray() {
@@ -44,6 +48,7 @@ func onReady() {
 			case <-mOpen.ClickedCh:
 				openGUI()
 			case <-mQuit.ClickedCh:
+				userQuit.Store(true)
 				systray.Quit()
 				return
 			}
@@ -53,9 +58,13 @@ func onReady() {
 	go refreshStatus(mStatus)
 }
 
-// onExit 在托盘退出时请求守护停止，并把已打开的界面窗口一起关掉；
-// 守护会在下一轮循环检查后收尾。
+// onExit 只在用户主动点托盘「退出」时收尾：请求守护停止，并把已打开的界面窗口一起关掉。
+// 守护自身退出（开关关闭、凭据缺失、崩溃）触发的 systray.Quit 不关界面，
+// 否则「停止守护」会连带把整个软件关掉。
 func onExit() {
+	if !userQuit.Load() {
+		return
+	}
 	if dir, err := config.UserDir(); err == nil {
 		_ = state.RequestStop(dir)
 	}

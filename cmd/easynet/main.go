@@ -33,7 +33,7 @@ func hasDaemonArg() bool {
 
 func runGUIMode() {
 	// 单实例：已有窗口时把它提到前台，不再开第二个。
-	lock, ok, err := instance.Acquire(`Local\easynet`)
+	lock, ok, err := instance.Acquire(`Local\easynet-gui`)
 	if err != nil {
 		println("单实例检查失败:", err.Error())
 	} else if !ok {
