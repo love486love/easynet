@@ -397,6 +397,35 @@ func (a *App) StopDaemon() (string, error) {
 // daemonOffFile 是「守护开关已关闭」的标记文件；不存在时视为开启，因此默认就是开着。
 const daemonOffFile = "daemon_off"
 
+// wifiAutoFile 是「自动连接校园 Wi-Fi」开关的标记文件；不存在即视为关闭，因此默认关闭。
+const wifiAutoFile = "wifi_auto"
+
+// WifiAutoEnabled 报告自动连接校园 Wi-Fi 是否开启。默认关闭。
+func (a *App) WifiAutoEnabled() bool {
+	_, err := os.Stat(filepath.Join(a.dir, wifiAutoFile))
+	return err == nil
+}
+
+// SetWifiAutoEnabled 持久化开关；开启时立即尝试连接一次，给用户即时反馈。
+func (a *App) SetWifiAutoEnabled(enabled bool) (string, error) {
+	path := filepath.Join(a.dir, wifiAutoFile)
+	if !enabled {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return "", err
+		}
+		return "已关闭自动连接校园 Wi-Fi", nil
+	}
+	if err := os.WriteFile(path, []byte("1"), 0o644); err != nil {
+		return "", err
+	}
+	if ni, err := netinfo.Get(); err == nil && ni.SSID != a.prof.Network.SSID {
+		if err := netinfo.Connect(a.prof.Network.SSID); err != nil {
+			return "已开启；本次连接失败：" + err.Error(), nil
+		}
+	}
+	return "已开启自动连接校园 Wi-Fi", nil
+}
+
 // DaemonEnabled 报告守护开关是否开启。默认开启。
 func (a *App) DaemonEnabled() bool {
 	_, err := os.Stat(filepath.Join(a.dir, daemonOffFile))

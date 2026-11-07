@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"github.com/love486love/easynet/internal/config"
@@ -50,7 +51,7 @@ func RunDaemon(profilePath string) error {
 		return fmt.Errorf("读取凭据失败（请先在界面保存账号）: %w", err)
 	}
 
-	lock, ok, err := instance.Acquire(`Local\easynet`)
+	lock, ok, err := instance.Acquire(`Local\easynet-daemon`)
 	if err != nil {
 		return err
 	}
@@ -126,6 +127,29 @@ func RunDaemon(profilePath string) error {
 		return res, lerr
 	}
 
+	// 自动连回校园 Wi-Fi：仅当开关文件存在、且当前不是目标 SSID 时尝试。
+	// 失败后 1 分钟内不重复尝试，避免 Wi-Fi 关闭时日志刷屏。
+	var lastWiFiTry time.Time
+	autoWiFi := func() {
+		if _, err := os.Stat(filepath.Join(dir, "wifi_auto")); err != nil {
+			return
+		}
+		ni, err := netinfo.Get()
+		if err != nil || ni.SSID == prof.Network.SSID {
+			return
+		}
+		if time.Since(lastWiFiTry) < time.Minute {
+			return
+		}
+		lastWiFiTry = time.Now()
+		if err := netinfo.Connect(prof.Network.SSID); err != nil {
+			logger.Warn("自动连接校园 Wi-Fi 失败", "err", err)
+			return
+		}
+		logger.Info("已请求连接校园 Wi-Fi", "ssid", prof.Network.SSID)
+		time.Sleep(3 * time.Second)
+	}
+
 	logger.Info("守护启动", "profile", prof.ID, "ssid", prof.Network.SSID)
 	_ = state.Write(dir, state.Snapshot{State: "unknown", Message: "守护已启动", PID: os.Getpid()})
 	exitMessage = "守护已停止"
@@ -167,6 +191,7 @@ func RunDaemon(profilePath string) error {
 			}
 		},
 		Probe: func(ctx context.Context) (portal.State, probe.Evidence, error) {
+			autoWiFi()
 			st, ev, perr := session.ProbeOnce(ctx, prof)
 			if perr != nil {
 				lastMessage = perr.Error()
