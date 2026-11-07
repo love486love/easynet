@@ -1,11 +1,12 @@
 // epo-daemon 是无控制台的常驻守护入口（windowsgui 子系统）。
-// 开机自启直接指向本程序，启动后即开始守护，无需额外参数。
+// 开机自启直接指向本程序：启动后即开始守护，并在系统托盘显示状态。
 package main
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
+	"time"
+
+	"fyne.io/systray"
 
 	"github.com/love486love/epo-2026/internal/app"
 	"github.com/love486love/epo-2026/internal/config"
@@ -13,13 +14,30 @@ import (
 )
 
 func main() {
-	if err := app.RunDaemon(""); err != nil {
-		// windowsgui 没有控制台，错误写日志文件，便于用户排查。
-		recordError(err)
-		os.Exit(1)
+	done := make(chan struct{})
+	go func() {
+		if err := app.RunDaemon(""); err != nil {
+			recordError(err)
+		}
+		close(done)
+	}()
+
+	// 守护自身退出（含停止请求、凭据缺失）时，托盘同步消失。
+	go func() {
+		<-done
+		systray.Quit()
+	}()
+
+	runTray()
+
+	// 用户从托盘点"退出"：onExit 已写入 stop.flag，这里等守护收尾。
+	select {
+	case <-done:
+	case <-time.After(8 * time.Second):
 	}
 }
 
+// recordError 在 windowsgui 无控制台的情况下把启动错误写进日志。
 func recordError(err error) {
 	dir, derr := config.UserDir()
 	if derr != nil {
@@ -31,5 +49,4 @@ func recordError(err error) {
 	}
 	defer closeLog()
 	logger.Error("守护启动失败", "err", err)
-	_ = fmt.Sprint(err)
 }

@@ -4,7 +4,7 @@
 
 连上校园 Wi-Fi 后自动完成 Dr.COM ePortal 网页认证，无需再打开浏览器输入账号密码。
 
-> 当前状态：**M3 进行中**。协议层、判定层、凭据、守护循环、原生窗口 GUI、界面与守护联动已实现；真机掉线恢复实测 4 秒；托盘待接入。
+> 当前状态：**M3 已完成**。协议层、判定层、凭据、守护循环（含系统托盘）、原生窗口 GUI、界面与守护联动均已实现；真机掉线恢复实测 4 秒。
 
 ## 命令行
 
@@ -14,12 +14,13 @@ epo doctor          # 诊断：本机网络 + 各探针证据 + 网关参数（�
 epo login -cred c.json        # 登录一次（凭据文件不入库）
 epo save-cred -cred c.json    # 用 DPAPI 加密保存凭据
 epo daemon          # 常驻守护：掉线自动重连
+epo-daemon.exe      # 无控制台守护 + 系统托盘（开机自启指向它）
 epo autostart install|remove|status   # 开机自启（HKCU\Run，无需管理员）
 epo-gui.exe         # 原生窗口图形界面（Wails + WebView2）
 epo gui             # 轻量备选：本地网页界面（无 WebView2 时可用）
 ```
 
-## 特性（规划）
+## 特性
 
 - 连网自动认证、断线自动恢复
 - 常驻守护进程（含托盘），内存占用目标 < 40 MB
