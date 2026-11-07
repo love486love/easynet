@@ -13,6 +13,7 @@ bin/
 /dist/
 cmd/epo-gui/build/
 cmd/epo-gui/frontend/node_modules/
+cmd/epo-gui/frontend/wailsjs/
 # go build ./... 在包目录生成的副产物
 /epo.exe
 /epo-daemon.exe
