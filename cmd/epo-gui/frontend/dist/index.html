@@ -128,6 +128,10 @@
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .btn.primary:hover { background: #2b8cff; border-color: #2b8cff; }
   .btn:disabled { opacity: .55; cursor: default; }
+  .btn.ghost { background: transparent; border-style: dashed; color: var(--muted); }
+  .btn.ghost:hover { color: var(--text); border-color: var(--accent); }
+  .btn.danger { color: var(--bad); border-color: var(--bad); background: transparent; }
+  .btn.danger:hover { background: rgba(207, 34, 46, .08); border-color: var(--bad); }
 
   .cred-hint {
     display: none; align-items: center; justify-content: space-between; gap: 12px;
@@ -152,17 +156,31 @@
   .value { font-size: 13.5px; margin-top: 5px; word-break: break-all; }
   .value.mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
 
-  /* ---------- 表单 / 日志 / 关于 ---------- */
-  .account-card {
-    display: none; align-items: center; justify-content: space-between; gap: 12px;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    padding: 12px 14px; margin-bottom: 16px; max-width: 640px;
+  /* ---------- 账号 ---------- */
+  .acc-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; max-width: 760px; }
+  .acc-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+    padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line2);
+    background: var(--panel); color: var(--text); cursor: pointer; font-family: inherit;
+    transition: border-color .15s, background .15s, box-shadow .15s;
   }
-  .account-value { font-size: 14px; font-weight: 600; margin-top: 4px; }
-  .account-actions { display: flex; gap: 8px; }
-  .btn.danger { color: var(--bad); border-color: var(--bad); background: transparent; }
-  .btn.danger:hover { background: rgba(207, 34, 46, .08); border-color: var(--bad); }
-  .account-empty { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active {
+    border-color: var(--accent); background: rgba(11, 123, 255, .09);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .chip-user { font-size: 13px; font-weight: 600; letter-spacing: .02em; }
+  .chip-carrier { font-size: 10.5px; color: var(--muted); }
+  .chips-empty { font-size: 12.5px; color: var(--muted); align-self: center; }
+
+  .account-editor {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px; max-width: 760px;
+  }
+  .editor-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+  .editor-title { font-size: 14px; font-weight: 600; margin-top: 3px; }
+  .field.actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 
   .form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 640px; }
   .field { display: flex; flex-direction: column; gap: 6px; }
@@ -289,45 +307,49 @@
 
       <section class="page" id="page-account">
         <h2 class="page-title">账号</h2>
-        <div class="page-sub">密码使用 Windows DPAPI 加密保存在本机，不会上传</div>
+        <div class="page-sub">守护使用当前选中的账号自动认证；密码以 DPAPI 加密保存在本机</div>
 
-        <div class="account-card" id="accCard">
-          <div>
-            <div class="label">当前已保存账号</div>
-            <div class="account-value" id="accValue">—</div>
-          </div>
-          <div class="account-actions">
-            <button class="btn" onclick="fillAccount()">修改</button>
-            <button class="btn danger" onclick="deleteAccount()">删除账号</button>
-          </div>
+        <div class="acc-bar">
+          <div class="acc-chips" id="accChips"></div>
+          <button class="btn ghost" onclick="newAccount()">+ 新增账号</button>
         </div>
-        <div class="account-empty" id="accEmpty">尚未保存账号，请在下方填写</div>
 
-        <div class="form">
-          <div class="field">
-            <label>学号</label>
-            <input id="user" placeholder="例如 2023xxxxxx" autocomplete="off">
+        <div class="account-editor">
+          <div class="editor-head">
+            <div>
+              <div class="label" id="editorLabel">新增账号</div>
+              <div class="editor-title" id="editorTitle">填写学号、密码与运营商</div>
+            </div>
+            <button class="btn danger" id="delBtn" style="display:none" onclick="deleteCurrent()">删除此账号</button>
           </div>
-          <div class="field">
-            <label>密码</label>
-            <input id="pass" type="password" placeholder="校园网密码" autocomplete="off">
+
+          <div class="form">
+            <div class="field">
+              <label>学号</label>
+              <input id="user" placeholder="例如 2023xxxxxx" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>密码</label>
+              <input id="pass" type="password" placeholder="校园网密码" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>运营商线路</label>
+              <select id="carrier">
+                <option value="cmcc">中国移动</option>
+                <option value="ctcc">中国电信</option>
+                <option value="cucc">中国联通</option>
+                <option value="campus">校园线路</option>
+              </select>
+            </div>
+            <div class="field actions">
+              <button class="btn primary" onclick="saveCred()">保存账号</button>
+            </div>
           </div>
-          <div class="field">
-            <label>运营商线路</label>
-            <select id="carrier">
-              <option value="cmcc">中国移动</option>
-              <option value="ctcc">中国电信</option>
-              <option value="cucc">中国联通</option>
-              <option value="campus">校园线路</option>
-            </select>
-          </div>
-          <div class="field" style="justify-content:flex-end">
-            <button class="btn primary" onclick="saveCred()">保存账号</button>
-          </div>
+          <div class="msg" id="credMsg"></div>
         </div>
-        <div class="msg" id="credMsg"></div>
+
         <div class="hint">
-          修改账号后需重新保存。凭据文件位于 <code>%LOCALAPPDATA%\epo\secret.bin</code>，由 DPAPI 以当前用户身份加密。
+          守护使用「当前使用账号」自动认证；切换账号后需要重新启动守护。账号文件位于 <code>%LOCALAPPDATA%\epo\accounts.bin</code>，由 DPAPI 以当前用户身份加密。
         </div>
       </section>
 
@@ -466,44 +488,99 @@ async function toggleDaemon() {
 }
 
 const CARRIER_NAMES = { cmcc: '中国移动', ctcc: '中国电信', cucc: '中国联通', campus: '校园线路' };
+function carrierName(c) { return CARRIER_NAMES[c] || c || '未指定线路'; }
 
-async function loadAccount() {
+let accountsCache = [];
+let selectedUser = '';
+
+async function loadAccounts() {
   if (!App()) return;
   try {
-    const a = await App().Account();
-    const card = document.getElementById('accCard');
-    const empty = document.getElementById('accEmpty');
-    if (a && a.saved) {
-      card.style.display = 'flex';
-      empty.style.display = 'none';
-      document.getElementById('accValue').textContent =
-        a.username + ' · ' + (CARRIER_NAMES[a.carrier] || a.carrier || '未指定线路');
-    } else {
-      card.style.display = 'none';
-      empty.style.display = 'block';
+    accountsCache = await App().Accounts();
+    const chips = document.getElementById('accChips');
+    chips.innerHTML = '';
+    if (!accountsCache.length) {
+      const span = document.createElement('span');
+      span.className = 'chips-empty';
+      span.textContent = '还没有账号';
+      chips.appendChild(span);
+      selectedUser = '';
+      renderEditor();
+      return;
     }
+    if (!selectedUser || !accountsCache.some(a => a.username === selectedUser)) {
+      const cur = accountsCache.find(a => a.current);
+      selectedUser = (cur || accountsCache[0]).username;
+    }
+    accountsCache.forEach(a => {
+      const chip = document.createElement('button');
+      chip.className = 'chip' + (a.username === selectedUser ? ' active' : '');
+      const user = document.createElement('span');
+      user.className = 'chip-user';
+      user.textContent = a.username;
+      const carrier = document.createElement('span');
+      carrier.className = 'chip-carrier';
+      carrier.textContent = carrierName(a.carrier);
+      chip.appendChild(user);
+      chip.appendChild(carrier);
+      chip.onclick = () => selectAccount(a.username);
+      chips.appendChild(chip);
+    });
+    renderEditor();
   } catch (e) { }
 }
 
-async function fillAccount() {
-  if (!App()) return;
-  try {
-    const a = await App().Account();
-    if (!a || !a.saved) return;
-    document.getElementById('user').value = a.username || '';
-    if (a.carrier) document.getElementById('carrier').value = a.carrier;
-    document.getElementById('pass').focus();
-  } catch (e) { }
+function renderEditor() {
+  const a = accountsCache.find(x => x.username === selectedUser);
+  const label = document.getElementById('editorLabel');
+  const title = document.getElementById('editorTitle');
+  const del = document.getElementById('delBtn');
+  if (a) {
+    label.textContent = a.current ? '当前使用账号' : '已保存账号';
+    title.textContent = a.username + ' · ' + carrierName(a.carrier);
+    del.style.display = 'inline-flex';
+    document.getElementById('user').value = a.username;
+    document.getElementById('carrier').value = a.carrier || 'cmcc';
+  } else {
+    label.textContent = '新增账号';
+    title.textContent = '填写学号、密码与运营商';
+    del.style.display = 'none';
+    document.getElementById('user').value = '';
+    document.getElementById('carrier').value = 'cmcc';
+  }
+  document.getElementById('pass').value = '';
 }
 
-async function deleteAccount() {
-  if (!App()) return;
-  if (!confirm('确定删除已保存的账号？删除后需要重新填写才能自动认证。')) return;
+function newAccount() {
+  selectedUser = '';
+  renderEditor();
+  document.getElementById('user').focus();
+}
+
+async function selectAccount(username) {
   const el = document.getElementById('credMsg');
   try {
-    const msg = await App().DeleteAccount();
+    const msg = await App().SelectAccount(username);
+    selectedUser = username;
     el.textContent = msg;
     el.className = 'msg ok';
+    await refresh();
+  } catch (e) {
+    el.textContent = String(e);
+    el.className = 'msg bad';
+  }
+}
+
+async function deleteCurrent() {
+  const a = accountsCache.find(x => x.username === selectedUser);
+  if (!a) return;
+  if (!confirm('确定删除账号 ' + a.username + '？')) return;
+  const el = document.getElementById('credMsg');
+  try {
+    const msg = await App().DeleteAccount(a.username);
+    el.textContent = msg;
+    el.className = 'msg ok';
+    selectedUser = '';
     await refresh();
   } catch (e) {
     el.textContent = String(e);
@@ -517,7 +594,7 @@ async function refresh() {
   catch (e) { setMsg('刷新失败，请稍后重试', false); }
   await loadLogs();
   await loadDaemon();
-  await loadAccount();
+  await loadAccounts();
 }
 
 async function loadLogs() {
@@ -562,6 +639,7 @@ async function saveCred() {
     el.textContent = msg;
     el.className = 'msg ok';
     document.getElementById('pass').value = '';
+    selectedUser = username;
     await refresh();
   } catch (e) {
     el.textContent = String(e);

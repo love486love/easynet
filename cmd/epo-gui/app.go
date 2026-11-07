@@ -60,7 +60,7 @@ type DaemonInfo struct {
 type AccountInfo struct {
 	Username string `json:"username"`
 	Carrier  string `json:"carrier"`
-	Saved    bool   `json:"saved"`
+	Current  bool   `json:"current"`
 }
 
 // NewApp 读取 profile 与用户目录。凭据缺失不视为错误，界面里再引导填写。
@@ -101,7 +101,7 @@ func (a *App) Status() Status {
 		st.State = state.String()
 	}
 
-	if _, err := creds.Load(a.dir); err == nil {
+	if store, err := creds.LoadStore(a.dir); err == nil && len(store.Accounts) > 0 {
 		st.HasCred = true
 	}
 	if list, err := trust.Load(a.dir); err == nil && len(list) > 0 {
@@ -151,7 +151,7 @@ func (a *App) Login() (string, error) {
 	return msg, nil
 }
 
-// SaveCred 把账号密码用 DPAPI 加密保存。
+// SaveCred 新增或更新账号（DPAPI 加密），并把它设为当前账号。
 func (a *App) SaveCred(username, password, carrier string) (string, error) {
 	if username == "" || password == "" {
 		return "", fmt.Errorf("账号和密码不能为空")
@@ -159,32 +159,59 @@ func (a *App) SaveCred(username, password, carrier string) (string, error) {
 	if carrier == "" {
 		carrier = a.prof.Login.Carrier
 	}
-	old, loadErr := creds.Load(a.dir)
-	if loadErr == nil && old.Username == username && old.Password == password && old.Carrier == carrier {
-		return "该账号已保存，无需重复添加", nil
+
+	store, loadErr := creds.LoadStore(a.dir)
+	if loadErr == nil {
+		for _, acc := range store.Accounts {
+			if acc.Username == username && acc.Password == password && acc.Carrier == carrier {
+				if store.Current != username {
+					if _, err := creds.SelectAccount(a.dir, username); err != nil {
+						return "", err
+					}
+					return "已切换到该账号（重启守护后生效）", nil
+				}
+				return "该账号已保存，无需重复添加", nil
+			}
+		}
 	}
-	if err := creds.Save(a.dir, creds.Secret{Username: username, Password: password, Carrier: carrier}); err != nil {
+
+	if _, err := creds.SaveAccount(a.dir, creds.Secret{Username: username, Password: password, Carrier: carrier}); err != nil {
 		return "", err
 	}
-	if loadErr == nil && old.Username == username {
-		return "账号已更新（重启守护后生效）", nil
-	}
-	return "凭据已加密保存（重启守护后生效）", nil
+	return "账号已保存（重启守护后生效）", nil
 }
 
-// Account 返回已保存的账号信息；密码不会返回给前端。
-func (a *App) Account() AccountInfo {
-	s, err := creds.Load(a.dir)
+// Accounts 返回全部已保存账号；密码不会返回给前端。
+func (a *App) Accounts() []AccountInfo {
+	store, err := creds.LoadStore(a.dir)
 	if err != nil {
-		return AccountInfo{}
+		return []AccountInfo{}
 	}
-	return AccountInfo{Username: s.Username, Carrier: s.Carrier, Saved: true}
+	out := make([]AccountInfo, 0, len(store.Accounts))
+	for _, acc := range store.Accounts {
+		out = append(out, AccountInfo{Username: acc.Username, Carrier: acc.Carrier, Current: acc.Username == store.Current})
+	}
+	return out
 }
 
-// DeleteAccount 删除本地加密凭据；守护若在运行则同时请求停止，
-// 否则它会继续使用内存里的旧凭据。
-func (a *App) DeleteAccount() (string, error) {
-	if err := creds.Delete(a.dir); err != nil {
+// SelectAccount 切换当前账号；守护若在运行则停止，重启后使用新账号。
+func (a *App) SelectAccount(username string) (string, error) {
+	if _, err := creds.SelectAccount(a.dir, username); err != nil {
+		return "", err
+	}
+	if a.Daemon().Running {
+		_ = state.RequestStop(a.dir)
+		return "已切换账号，守护已停止（重新启动后生效）", nil
+	}
+	return "已切换账号", nil
+}
+
+// DeleteAccount 删除指定账号；守护若在运行则停止。
+func (a *App) DeleteAccount(username string) (string, error) {
+	if username == "" {
+		return "", fmt.Errorf("未指定账号")
+	}
+	if _, err := creds.DeleteAccount(a.dir, username); err != nil {
 		return "", err
 	}
 	if a.Daemon().Running {
