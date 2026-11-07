@@ -859,6 +859,10 @@ function startTutorial() {
   tutIndex = 0;
   document.getElementById('tutOverlay').hidden = false;
   showTutorialStep(0);
+  // 一开始播放就记录，中途关闭窗口也不会再次自动弹出
+  if (App() && App().MarkTutorialDone) {
+    App().MarkTutorialDone().catch(function () { });
+  }
 }
 
 function showTutorialStep(i) {
@@ -924,13 +928,14 @@ function prevTutorial() {
 
 function endTutorial() {
   document.getElementById('tutOverlay').hidden = true;
-  try { localStorage.setItem('epo-tutorial-done', '1'); } catch (e) { }
 }
 
-function maybeStartTutorial() {
-  let done = null;
-  try { done = localStorage.getItem('epo-tutorial-done'); } catch (e) { }
-  if (!done) setTimeout(startTutorial, 900);
+async function maybeStartTutorial() {
+  if (!App() || !App().TutorialDone) return;
+  try {
+    if (await App().TutorialDone()) return;
+  } catch (e) { }
+  setTimeout(startTutorial, 900);
 }
 
 document.addEventListener('keydown', function (e) {

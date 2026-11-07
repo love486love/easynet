@@ -263,6 +263,17 @@ func (a *App) Logs() []string {
 	return lines
 }
 
+// TutorialDone 报告新手引导是否已经播放过（标记文件在用户目录）。
+func (a *App) TutorialDone() bool {
+	_, err := os.Stat(filepath.Join(a.dir, "tutorial_done"))
+	return err == nil
+}
+
+// MarkTutorialDone 记录新手引导已播放，之后启动不再自动弹出。
+func (a *App) MarkTutorialDone() error {
+	return os.WriteFile(filepath.Join(a.dir, "tutorial_done"), []byte("1"), 0o644)
+}
+
 // ExportLog 把完整日志复制到用户选择的位置。
 func (a *App) ExportLog(dest string) (string, error) {
 	if dest == "" {
