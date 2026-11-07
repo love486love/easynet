@@ -16,12 +16,13 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:            "epo · 校园网自动认证",
-		Width:            900,
-		Height:           760,
-		MinWidth:         780,
-		MinHeight:        600,
+		Width:            1000,
+		Height:           680,
+		MinWidth:         860,
+		MinHeight:        560,
+		Frameless:        true,
 		AssetServer:      &assetserver.Options{Assets: assets},
-		BackgroundColour: &options.RGBA{R: 15, G: 18, B: 22, A: 1},
+		BackgroundColour: &options.RGBA{R: 20, G: 22, B: 26, A: 1},
 		OnStartup:        app.startup,
 		Bind:             []interface{}{app},
 	})

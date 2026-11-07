@@ -4,10 +4,10 @@ tools/selftest-last.txt
 *.har
 private/
 
-# 构建产物
+# 构建产物（注意 dist/ 只排除仓库根目录，frontend/dist 是手写界面源码必须入库）
 build/
 bin/
-dist/
+/dist/
 cmd/epo-gui/build/
 cmd/epo-gui/frontend/node_modules/
 

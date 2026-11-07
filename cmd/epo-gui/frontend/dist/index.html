@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>epo</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --bar: #11161c; --line: #21262d; --line2: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #0b7bff; --accent2: #4dd0e1;
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.55 "Microsoft YaHei", "Segoe UI", sans-serif;
+    overflow: hidden; user-select: none;
+  }
+  .app { display: flex; flex-direction: column; height: 100%; }
+
+  /* ---------- 自绘标题栏 ---------- */
+  .titlebar {
+    height: 46px; flex: 0 0 46px; display: flex; align-items: center; justify-content: space-between;
+    background: var(--bar); border-bottom: 1px solid var(--line);
+    --wails-draggable: drag;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding-left: 14px; }
+  .logo {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff;
+  }
+  .brand-name { font-size: 14px; font-weight: 700; letter-spacing: .08em; }
+  .brand-sub { font-size: 11px; color: var(--muted); margin-left: 2px; }
+  .win-controls { display: flex; height: 100%; --wails-draggable: no-drag; }
+  .wc {
+    width: 46px; height: 100%; border: 0; background: transparent; color: var(--muted);
+    font-size: 15px; line-height: 1; cursor: pointer;
+  }
+  .wc:hover { background: #1f2630; color: var(--text); }
+  .wc.close:hover { background: #da3633; color: #fff; }
+
+  /* ---------- 主体 ---------- */
+  .main { display: flex; flex: 1; min-height: 0; }
+
+  .sidebar {
+    width: 220px; flex: 0 0 220px; background: var(--bar);
+    border-right: 1px solid var(--line); display: flex; flex-direction: column;
+  }
+  .nav { padding: 8px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px;
+    color: var(--muted); cursor: pointer; border-left: 2px solid transparent;
+  }
+  .nav-item:hover { background: #1b2129; color: var(--text); }
+  .nav-item.active { background: #1b2430; color: #fff; border-left-color: var(--accent); }
+  .nav-item svg { width: 16px; height: 16px; flex: 0 0 16px; opacity: .85; }
+
+  .sidebar-foot { padding: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .switch-row { display: flex; align-items: center; justify-content: space-between; color: var(--muted); }
+  .switch {
+    width: 38px; height: 21px; border-radius: 11px; background: #2b3440; border: 1px solid var(--line2);
+    position: relative; cursor: pointer; transition: background .15s;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+    border-radius: 50%; background: #8b949e; transition: all .15s;
+  }
+  .switch.on { background: #14314f; border-color: #1f6feb; }
+  .switch.on::after { left: 19px; background: var(--accent); }
+  .ver { font-size: 11px; color: #56606a; }
+
+  .content { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 26px 28px; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+  .page-sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+
+  /* ---------- 概览 ---------- */
+  .hero {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    background: linear-gradient(120deg, #161d27, #131820);
+    border: 1px solid var(--line2); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px;
+  }
+  .hero-left { display: flex; align-items: center; gap: 14px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 4px rgba(210,153,34,.12); }
+  .dot.online { background: var(--ok); box-shadow: 0 0 0 4px rgba(63,185,80,.14); }
+  .dot.offline { background: var(--bad); box-shadow: 0 0 0 4px rgba(248,81,73,.14); }
+  .state-text { font-size: 20px; font-weight: 600; line-height: 1.2; }
+  .state-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .hero-right { display: flex; gap: 8px; }
+
+  .btn {
+    background: #21262d; color: var(--text); border: 1px solid var(--line2);
+    padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  .btn:hover { background: #2b3340; border-color: #3d444d; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #2b8cff; }
+  .btn:disabled { opacity: .55; cursor: default; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px; }
+  .label { color: var(--muted); font-size: 11.5px; }
+  .value { font-size: 13.5px; margin-top: 5px; word-break: break-all; }
+  .value.mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
+
+  /* ---------- 表单 / 日志 / 关于 ---------- */
+  .form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 640px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.span2 { grid-column: span 2; }
+  .field label { color: var(--muted); font-size: 12px; }
+  input, select {
+    background: #0b0f14; color: var(--text); border: 1px solid var(--line2);
+    border-radius: 8px; padding: 9px 12px; font-size: 13px; width: 100%; font-family: inherit;
+    user-select: text;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 12px; line-height: 1.7; }
+
+  pre {
+    background: #0b0f14; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; height: 380px; overflow: auto; margin: 0;
+    font: 12px/1.65 Consolas, "Cascadia Mono", monospace; color: #adbac7;
+    user-select: text;
+  }
+
+  .msg { min-height: 20px; font-size: 12.5px; margin-top: 10px; color: var(--muted); }
+  .msg.ok { color: var(--ok); }
+  .msg.bad { color: var(--bad); }
+
+  .about-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); max-width: 640px; }
+  .about-row span:first-child { color: var(--muted); }
+  .link { color: var(--accent); cursor: pointer; user-select: text; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="titlebar" ondblclick="winMax()">
+    <div class="brand">
+      <div class="logo">ep</div>
+      <div>
+        <div class="brand-name">epo<span class="brand-sub">校园网自动认证</span></div>
+      </div>
+    </div>
+    <div class="win-controls">
+      <button class="wc" title="最小化" onclick="winMin()">&#x2013;</button>
+      <button class="wc" title="最大化" onclick="winMax()">&#x25A1;</button>
+      <button class="wc close" title="关闭" onclick="winClose()">&#x00D7;</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <aside class="sidebar">
+      <nav class="nav">
+        <div class="nav-item active" data-page="overview">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"/></svg>
+          <span>概览</span>
+        </div>
+        <div class="nav-item" data-page="account">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 1.5c-2.9 0-5.5 1.5-5.5 3.2V15h11v-2.3c0-1.7-2.6-3.2-5.5-3.2z"/></svg>
+          <span>账号</span>
+        </div>
+        <div class="nav-item" data-page="logs">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h7l3 3v11H3zM9 2v3h3"/></svg>
+          <span>运行日志</span>
+        </div>
+        <div class="nav-item" data-page="about">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14zM7.2 4.2h1.6v1.6H7.2zM7.2 7h1.6v5H7.2z"/></svg>
+          <span>关于</span>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="switch-row">
+          <span>开机自启</span>
+          <div class="switch" id="autoSwitch" onclick="toggleAutostart()"></div>
+        </div>
+        <div class="ver" id="ver">epo v0.1.0</div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <section class="page active" id="page-overview">
+        <h2 class="page-title">概览</h2>
+        <div class="page-sub">实时检测网络与认证状态</div>
+
+        <div class="hero">
+          <div class="hero-left">
+            <div class="dot" id="dot"></div>
+            <div>
+              <div class="state-text" id="stateText">检查中…</div>
+              <div class="state-sub" id="stateSub">正在探测网络状态</div>
+            </div>
+          </div>
+          <div class="hero-right">
+            <button class="btn primary" id="loginBtn" onclick="doLogin()">立即登录</button>
+            <button class="btn" onclick="refresh()">刷新</button>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card"><div class="label">Wi-Fi</div><div class="value" id="ssid">—</div></div>
+          <div class="card"><div class="label">本机 IP</div><div class="value mono" id="ipv4">—</div></div>
+          <div class="card"><div class="label">默认网关</div><div class="value mono" id="gateway">—</div></div>
+          <div class="card"><div class="label">网关 MAC（TOFU）</div><div class="value mono" id="gwmac">—</div></div>
+          <div class="card"><div class="label">本机 MAC</div><div class="value mono" id="mac">—</div></div>
+          <div class="card"><div class="label">凭据 / 信任</div><div class="value" id="cred">—</div></div>
+        </div>
+        <div class="msg" id="msg"></div>
+      </section>
+
+      <section class="page" id="page-account">
+        <h2 class="page-title">账号</h2>
+        <div class="page-sub">密码使用 Windows DPAPI 加密保存在本机，不会上传</div>
+        <div class="form">
+          <div class="field">
+            <label>学号</label>
+            <input id="user" placeholder="例如 2023xxxxxx" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>密码</label>
+            <input id="pass" type="password" placeholder="校园网密码" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>运营商线路</label>
+            <select id="carrier">
+              <option value="cmcc">中国移动</option>
+              <option value="ctcc">中国电信</option>
+              <option value="cucc">中国联通</option>
+              <option value="campus">校园线路</option>
+            </select>
+          </div>
+          <div class="field" style="justify-content:flex-end">
+            <button class="btn primary" onclick="saveCred()">保存账号</button>
+          </div>
+        </div>
+        <div class="msg" id="credMsg"></div>
+        <div class="hint">
+          修改账号后需重新保存。凭据文件位于 <code>%LOCALAPPDATA%\epo\secret.bin</code>，由 DPAPI 以当前用户身份加密。
+        </div>
+      </section>
+
+      <section class="page" id="page-logs">
+        <h2 class="page-title">运行日志</h2>
+        <div class="page-sub">来自 %LOCALAPPDATA%\epo\logs\epo.log，每 5 秒刷新</div>
+        <pre id="logs">加载中…</pre>
+      </section>
+
+      <section class="page" id="page-about">
+        <h2 class="page-title">关于</h2>
+        <div class="page-sub">江西农业大学校园网自动认证工具</div>
+        <div class="about-row"><span>版本</span><span>v0.1.0</span></div>
+        <div class="about-row"><span>仓库</span><span class="link" onclick="openRepo()">github.com/love486love/epo-2026</span></div>
+        <div class="about-row"><span>协议</span><span>MIT</span></div>
+        <div class="about-row"><span>数据</span><span>全部保存在本机，无联网上报</span></div>
+        <div class="hint">
+          首次登录会记录网关 MAC 并加入信任列表，之后若检测到网关 MAC 变化会拒绝自动登录，防止劫持。
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+const App = () => window.go && window.go.main && window.go.main.App;
+const RT = () => window.runtime;
+
+function winMin() { RT() && RT().WindowMinimise(); }
+function winMax() { RT() && RT().WindowToggleMaximise(); }
+function winClose() { RT() && RT().Quit(); }
+function openRepo() { RT() && RT().BrowserOpenURL("https://github.com/love486love/epo-2026"); }
+
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.onclick = () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    el.classList.add('active');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + el.dataset.page).classList.add('active');
+    if (el.dataset.page === 'logs') loadLogs();
+  };
+});
+
+function setMsg(text, ok) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'msg ' + (ok === true ? 'ok' : ok === false ? 'bad' : '');
+}
+
+function renderState(s) {
+  const dot = document.getElementById('dot');
+  const text = document.getElementById('stateText');
+  const sub = document.getElementById('stateSub');
+  dot.className = 'dot ' + (s.state || '');
+  if (s.state === 'online') { text.textContent = '已连接'; sub.textContent = '网络认证正常'; }
+  else if (s.state === 'offline') { text.textContent = '未认证'; sub.textContent = '需要登录校园网'; }
+  else { text.textContent = '状态未知'; sub.textContent = s.message || '无法判断网络状态'; }
+
+  document.getElementById('ssid').textContent = s.ssid || '—';
+  document.getElementById('ipv4').textContent = s.ipv4 || '—';
+  document.getElementById('gateway').textContent = s.gateway || '—';
+  document.getElementById('gwmac').textContent = s.gateway_mac || '（未取到）';
+  document.getElementById('mac').textContent = (s.mac || '—') + (s.random_mac ? '（随机）' : '');
+  document.getElementById('cred').textContent =
+    (s.has_cred ? '已保存' : '未保存') + ' / ' + (s.has_trust ? '已信任网关' : '未记录');
+}
+
+async function refresh() {
+  if (!App()) { setMsg('后端未就绪', false); return; }
+  try { renderState(await App().Status()); }
+  catch (e) { setMsg('刷新失败: ' + e, false); }
+  await loadLogs();
+}
+
+async function loadLogs() {
+  if (!App()) return;
+  try {
+    const lines = await App().Logs();
+    const pre = document.getElementById('logs');
+    pre.textContent = (lines || []).join('\n') || '（暂无日志）';
+    pre.scrollTop = pre.scrollHeight;
+  } catch (e) { }
+}
+
+async function doLogin() {
+  if (!App()) return;
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  setMsg('正在认证…');
+  try {
+    const msg = await App().Login();
+    setMsg(msg, msg.indexOf('成功') >= 0);
+  } catch (e) {
+    setMsg(String(e), false);
+  } finally {
+    btn.disabled = false;
+    await refresh();
+  }
+}
+
+async function saveCred() {
+  if (!App()) return;
+  const el = document.getElementById('credMsg');
+  const username = document.getElementById('user').value.trim();
+  const password = document.getElementById('pass').value;
+  const carrier = document.getElementById('carrier').value;
+  if (!username || !password) {
+    el.textContent = '账号和密码不能为空';
+    el.className = 'msg bad';
+    return;
+  }
+  try {
+    const msg = await App().SaveCred(username, password, carrier);
+    el.textContent = msg;
+    el.className = 'msg ok';
+    document.getElementById('pass').value = '';
+    await refresh();
+  } catch (e) {
+    el.textContent = String(e);
+    el.className = 'msg bad';
+  }
+}
+
+async function loadAutostart() {
+  if (!App()) return;
+  try {
+    const s = await App().Autostart();
+    document.getElementById('autoSwitch').classList.toggle('on', !!s.enabled);
+  } catch (e) { }
+}
+
+async function toggleAutostart() {
+  if (!App()) return;
+  try {
+    const s = await App().Autostart();
+    await App().SetAutostart(!s.enabled);
+    await loadAutostart();
+  } catch (e) { setMsg(String(e), false); }
+}
+
+refresh();
+loadAutostart();
+setInterval(loadLogs, 5000);
+</script>
+</body>
+</html>
