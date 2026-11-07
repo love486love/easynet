@@ -128,6 +128,13 @@
   .btn.primary:hover { background: #2b8cff; border-color: #2b8cff; }
   .btn:disabled { opacity: .55; cursor: default; }
 
+  .cred-hint {
+    display: none; align-items: center; justify-content: space-between; gap: 12px;
+    background: rgba(210, 153, 34, .12); border: 1px solid rgba(210, 153, 34, .45);
+    color: var(--text); border-radius: 10px; padding: 11px 14px; margin-bottom: 12px;
+    font-size: 12.5px;
+  }
+
   .daemon-bar {
     display: flex; align-items: center; gap: 12px;
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
@@ -227,6 +234,11 @@
       <section class="page active" id="page-overview">
         <h2 class="page-title">概览</h2>
         <div class="page-sub">实时检测网络与认证状态</div>
+
+        <div class="cred-hint" id="credHint">
+          <span>尚未保存校园网账号，守护无法自动认证</span>
+          <button class="btn" onclick="goAccount()">去填写</button>
+        </div>
 
         <div class="hero">
           <div class="hero-left">
@@ -383,6 +395,11 @@ function renderState(s) {
   document.getElementById('mac').textContent = (s.mac || '—') + (s.random_mac ? '（随机）' : '');
   document.getElementById('cred').textContent =
     (s.has_cred ? '已保存' : '未保存') + ' / ' + (s.has_trust ? '已信任网关' : '未记录');
+  document.getElementById('credHint').style.display = s.has_cred ? 'none' : 'flex';
+}
+
+function goAccount() {
+  document.querySelector('.nav-item[data-page="account"]').click();
 }
 
 async function loadDaemon() {
@@ -394,7 +411,7 @@ async function loadDaemon() {
     dot.className = 'dot ' + (running ? (d.state === 'online' ? 'online' : '') : 'offline');
     document.getElementById('dTitle').textContent = running ? '后台守护运行中' : '后台守护未运行';
     let sub = running ? '已自动维持在线，关闭窗口不影响' : '关闭窗口后不会自动重连';
-    if (running && d.message) sub = d.message;
+    if (d.message) sub = d.message;
     document.getElementById('dSub').textContent = sub;
     document.getElementById('dBtn').textContent = running ? '停止守护' : '启动守护';
   } catch (e) { }

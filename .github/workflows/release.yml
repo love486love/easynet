@@ -1,0 +1,59 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Test
+        run: go test ./... -count=1 -timeout 120s
+
+      - name: Build CLI and daemon
+        run: |
+          go build -ldflags "-s -w" -o epo.exe ./cmd/epo
+          go build -ldflags "-s -w -H=windowsgui" -o epo-daemon.exe ./cmd/epo-daemon
+
+      - name: Build GUI
+        shell: pwsh
+        working-directory: cmd/epo-gui
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
+          $wails = Join-Path (go env GOPATH) "bin/wails.exe"
+          & $wails build -platform windows/amd64 -webview2 browser -ldflags "-s -w"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item epo.exe, epo-daemon.exe dist
+          Copy-Item cmd/epo-gui/build/bin/epo-gui.exe dist
+          Copy-Item README.md dist
+          $lines = Get-ChildItem dist -Filter *.exe | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$h  $($_.Name)"
+          }
+          $lines | Out-File dist/checksums.txt -Encoding utf8
+          Compress-Archive -Path dist/* -DestinationPath epo-windows-x64.zip -Force
+          (Get-FileHash epo-windows-x64.zip -Algorithm SHA256).Hash.ToLower() |
+            Out-File epo-windows-x64.zip.sha256 -Encoding utf8
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            epo-windows-x64.zip
+            epo-windows-x64.zip.sha256
+          generate_release_notes: true
