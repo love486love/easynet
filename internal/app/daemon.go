@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"time"
 
 	"github.com/love486love/epo-2026/internal/config"
 	"github.com/love486love/epo-2026/internal/creds"
@@ -84,6 +85,7 @@ func RunDaemon(profilePath string) error {
 		return fmt.Errorf("读取网关信任列表失败: %w", err)
 	}
 	lastGatewayMAC := ""
+	lastMessage := ""
 
 	loginFn := func(ctx context.Context, ev probe.Evidence) (portal.Result, error) {
 		ni, niErr := netinfo.Get()
@@ -112,7 +114,17 @@ func RunDaemon(profilePath string) error {
 
 		lastGatewayMAC = ni.GatewayMAC
 		client := drcom.NewWithSuffixes(prof.Login.CarrierSuffixes)
-		return client.Login(ctx, ep, cred)
+		res, lerr := client.Login(ctx, ep, cred)
+		if lerr != nil {
+			lastMessage = "登录失败: " + lerr.Error()
+		} else if !res.OK {
+			lastMessage = "登录失败: " + res.Message
+		}
+		if lerr != nil || !res.OK {
+			// 立即落盘，界面不必等下一轮探针就能看到失败原因。
+			_ = state.Write(dir, state.Snapshot{State: portal.StateOffline.String(), Message: lastMessage, PID: os.Getpid()})
+		}
+		return res, lerr
 	}
 
 	logger.Info("守护启动", "profile", prof.ID, "ssid", prof.Network.SSID)
@@ -121,13 +133,48 @@ func RunDaemon(profilePath string) error {
 
 	runErr := daemon.Run(ctx, daemon.Deps{
 		Policy: prof.Policy,
+		// Sleep 每 200ms 检查一次停止标记，每 5 秒刷新一次状态心跳：
+		// 否则长退避（45/60 秒）期间既无法响应停止，界面也会误判"守护未运行"。
+		Sleep: func(ctx context.Context, dur time.Duration) error {
+			deadline := time.Now().Add(dur)
+			nextBeat := time.Now().Add(5 * time.Second)
+			for {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if state.StopRequested(dir) {
+					return context.Canceled
+				}
+				now := time.Now()
+				if !now.Before(nextBeat) {
+					if snap, err := state.Read(dir); err == nil {
+						snap.UpdatedAt = now
+						_ = state.Write(dir, snap)
+					}
+					nextBeat = now.Add(5 * time.Second)
+				}
+				remain := time.Until(deadline)
+				if remain <= 0 {
+					return nil
+				}
+				if remain > 200*time.Millisecond {
+					remain = 200 * time.Millisecond
+				}
+				select {
+				case <-time.After(remain):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		},
 		Probe: func(ctx context.Context) (portal.State, probe.Evidence, error) {
 			st, ev, perr := session.ProbeOnce(ctx, prof)
-			msg := ""
 			if perr != nil {
-				msg = perr.Error()
+				lastMessage = perr.Error()
+			} else if st == portal.StateOnline {
+				lastMessage = ""
 			}
-			_ = state.Write(dir, state.Snapshot{State: st.String(), Message: msg, PID: os.Getpid()})
+			_ = state.Write(dir, state.Snapshot{State: st.String(), Message: lastMessage, PID: os.Getpid()})
 			return st, ev, perr
 		},
 		Login: loginFn,

@@ -1,6 +1,9 @@
 # 本地实测原始数据（含内网地址、MAC 等，不入库）
 docs/m0-raw-*.txt
 tools/selftest-last.txt
+tools/verify-*.log
+tools/verify-*.summary.txt
+tools/verify-last.txt
 *.har
 private/
 
