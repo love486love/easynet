@@ -1,14 +1,14 @@
 ﻿; Inno Setup 脚本：生成带标准卸载项（unins000.exe）的安装包。
-; 版本号由 CI 通过 /DMyAppVersion=<tag> 注入，本地默认 0.1.0。
+; 版本号由 CI 通过 /DMyAppVersion=<tag> 注入，本地默认 0.2.0。
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.0"
+  #define MyAppVersion "0.2.0"
 #endif
 
-#define MyAppName "epo"
+#define MyAppName "easynet"
 #define MyAppPublisher "love486love"
-#define MyAppURL "https://github.com/love486love/epo-2026"
-#define MyAppExeName "epo-gui.exe"
+#define MyAppURL "https://github.com/love486love/easynet"
+#define MyAppExeName "easynet.exe"
 
 [Setup]
 AppId={{6D3E9B52-8C1F-4A7D-9E44-2B7A5F0C1D88}
@@ -17,7 +17,7 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
-DefaultDirName={autopf}\epo
+DefaultDirName={autopf}\easynet
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -28,15 +28,13 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 OutputDir=..\dist-installer
-OutputBaseFilename=epo-setup-{#MyAppVersion}
+OutputBaseFilename=easynet-setup-{#MyAppVersion}
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 
 [Files]
-Source: "..\dist\epo-gui.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\epo-daemon.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\epo.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\easynet.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\checksums.txt"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -48,12 +46,11 @@ Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-Filename: "{cmd}"; Parameters: "/c reg delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v epo-daemon /f"; Flags: runhidden
-Filename: "{cmd}"; Parameters: "/c taskkill /IM epo-daemon.exe /F"; Flags: runhidden
-Filename: "{cmd}"; Parameters: "/c taskkill /IM epo-gui.exe /F"; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/c reg delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v easynet /f"; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/c taskkill /IM easynet.exe /F"; Flags: runhidden
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{localappdata}\epo"
+Type: filesandordirs; Name: "{localappdata}\easynet"
 
 [Code]
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

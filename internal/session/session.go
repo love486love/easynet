@@ -6,9 +6,9 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/love486love/epo-2026/internal/config"
-	"github.com/love486love/epo-2026/internal/portal"
-	"github.com/love486love/epo-2026/internal/probe"
+	"github.com/love486love/easynet/internal/config"
+	"github.com/love486love/easynet/internal/portal"
+	"github.com/love486love/easynet/internal/probe"
 )
 
 // ProbeOnce 逐个探针判定：任意一个在线即在线，全部失败才视为离线。

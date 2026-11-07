@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/love486love/epo-2026/internal/portal"
+	"github.com/love486love/easynet/internal/portal"
 )
 
 // JSONP 外壳：dr1003({...}); 回调名不固定，用正则剥离。

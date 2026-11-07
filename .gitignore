@@ -1,9 +1,5 @@
 # 本地实测原始数据（含内网地址、MAC 等，不入库）
 docs/m0-raw-*.txt
-tools/selftest-last.txt
-tools/verify-*.log
-tools/verify-*.summary.txt
-tools/verify-last.txt
 *.har
 private/
 
@@ -11,13 +7,11 @@ private/
 build/
 bin/
 /dist/
-cmd/epo-gui/build/
-cmd/epo-gui/frontend/node_modules/
-cmd/epo-gui/frontend/wailsjs/
+cmd/easynet/build/
+cmd/easynet/frontend/node_modules/
+cmd/easynet/frontend/wailsjs/
 # go build ./... 在包目录生成的副产物
-/epo.exe
-/epo-daemon.exe
-cmd/epo-gui/epo-gui.exe
+cmd/easynet/easynet.exe
 
 # 编辑器与系统
 .vscode/

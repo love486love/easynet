@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>epo</title>
+<title>easynet</title>
 <style>
   /* ---------- 深色（默认） ---------- */
   :root {
@@ -50,9 +50,9 @@
   .brand { display: flex; align-items: center; gap: 10px; padding-left: 14px; }
   .logo {
     width: 22px; height: 22px; border-radius: 6px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    background: linear-gradient(135deg, #00703C, #00A651);
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: #fff;
+    overflow: hidden;
   }
   .brand-name { font-size: 14px; font-weight: 700; letter-spacing: .08em; }
   .brand-sub { font-size: 11px; color: var(--muted); margin-left: 2px; font-weight: 400; letter-spacing: 0; }
@@ -166,6 +166,7 @@
     padding: 11px 14px; margin-bottom: 12px;
   }
   .daemon-bar .dot { width: 9px; height: 9px; box-shadow: none; flex: 0 0 9px; }
+  .daemon-bar .switch { flex: 0 0 auto; }
   .daemon-text { flex: 1; min-width: 0; }
   .daemon-title { font-size: 13px; font-weight: 600; }
   .daemon-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
@@ -276,9 +277,9 @@
 <div class="app">
   <header class="titlebar" ondblclick="winMax()">
     <div class="brand">
-      <div class="logo">ep</div>
+      <div class="logo"><svg viewBox="0 0 128 128" width="22" height="22" aria-hidden="true"><path d="M50 80 A26 26 0 0 1 78 80" stroke="#FFD24A" stroke-width="12" fill="none" stroke-linecap="round"/><path d="M36 64 A44 44 0 0 1 92 64" stroke="#FFD24A" stroke-width="12" fill="none" stroke-linecap="round"/><path d="M22 48 A60 60 0 0 1 106 48" stroke="#FFD24A" stroke-width="12" fill="none" stroke-linecap="round"/><circle cx="64" cy="100" r="15" fill="#BFE6E8"/></svg></div>
       <div>
-        <div class="brand-name">epo<span class="brand-sub">校园网自动认证</span></div>
+        <div class="brand-name">easynet<span class="brand-sub">校园网自动认证</span></div>
       </div>
     </div>
     <div class="win-controls">
@@ -316,7 +317,7 @@
           <span>开机自启</span>
           <div class="switch" id="autoSwitch" onclick="toggleAutostart()"></div>
         </div>
-        <div class="ver" id="ver">epo v0.1.0</div>
+        <div class="ver" id="ver">easynet v0.2.0</div>
       </div>
     </aside>
 
@@ -351,7 +352,7 @@
             <div class="daemon-title" id="dTitle">后台守护未运行</div>
             <div class="daemon-sub" id="dSub">关闭窗口后不会自动重连</div>
           </div>
-          <button class="btn" id="dBtn" onclick="toggleDaemon()">启动守护</button>
+          <div class="switch" id="dSwitch" onclick="toggleDaemon()" title="守护开关"></div>
         </div>
 
         <div class="grid">
@@ -418,13 +419,13 @@
         </div>
 
         <div class="hint">
-          守护使用「当前使用账号」自动认证；切换账号后需要重新启动守护。账号文件位于 <code>%LOCALAPPDATA%\epo\accounts.bin</code>，由 DPAPI 以当前用户身份加密。
+          守护使用「当前使用账号」自动认证；切换账号后守护会自动用新账号重启。账号文件位于 <code>%LOCALAPPDATA%\easynet\accounts.bin</code>，由 DPAPI 以当前用户身份加密。
         </div>
       </section>
 
       <section class="page" id="page-logs">
         <h2 class="page-title">运行日志</h2>
-        <div class="page-sub">来自 %LOCALAPPDATA%\epo\logs\epo.log，每 5 秒刷新</div>
+        <div class="page-sub">来自 %LOCALAPPDATA%\easynet\logs\easynet.log，每 5 秒刷新</div>
         <div class="log-bar">
           <button class="btn" onclick="exportLogs()">导出日志</button>
           <button class="btn" onclick="openLogsDir()">打开日志目录</button>
@@ -436,9 +437,9 @@
       <section class="page" id="page-about">
         <h2 class="page-title">关于</h2>
         <div class="page-sub">江西农业大学校园网自动认证工具</div>
-        <div class="about-row"><span>版本</span><span>v0.1.0</span></div>
+        <div class="about-row"><span>版本</span><span>v0.2.0</span></div>
         <div class="about-row"><span>新手引导</span><span class="link" onclick="startTutorial()">重新播放</span></div>
-        <div class="about-row"><span>仓库</span><span class="link" onclick="openRepo()">github.com/love486love/epo-2026</span></div>
+        <div class="about-row"><span>仓库</span><span class="link" onclick="openRepo()">github.com/love486love/easynet</span></div>
         <div class="about-row"><span>协议</span><span>MIT</span></div>
         <div class="about-row"><span>数据</span><span>全部保存在本机，无联网上报</span></div>
         <div class="hint">
@@ -474,10 +475,10 @@ const RT = () => window.runtime;
 function winMin() { RT() && RT().WindowMinimise(); }
 function winMax() { RT() && RT().WindowToggleMaximise(); }
 function winClose() { RT() && RT().Quit(); }
-function openRepo() { RT() && RT().BrowserOpenURL("https://github.com/love486love/epo-2026"); }
+function openRepo() { RT() && RT().BrowserOpenURL("https://github.com/love486love/easynet"); }
 
 /* ---------- 主题 ---------- */
-const THEME_KEY = 'epo-theme';
+const THEME_KEY = 'easynet-theme';
 const WINDOW_BG = { dark: [20, 22, 26, 1], light: [246, 248, 250, 1] };
 
 function applyTheme(mode) {
@@ -559,24 +560,24 @@ async function loadDaemon() {
     let sub = running ? '已自动维持在线，关闭窗口不影响' : '关闭窗口后不会自动重连';
     if (d.message) sub = d.message;
     document.getElementById('dSub').textContent = sub;
-    document.getElementById('dBtn').textContent = running ? '停止守护' : '启动守护';
+    document.getElementById('dSwitch').classList.toggle('on', !!(await App().DaemonEnabled()));
   } catch (e) { }
 }
 
 async function toggleDaemon() {
   if (!App()) return;
-  const btn = document.getElementById('dBtn');
-  btn.disabled = true;
-  setMsg('正在切换守护状态…');
+  const sw = document.getElementById('dSwitch');
+  const on = !sw.classList.contains('on');
+  sw.style.pointerEvents = 'none';
+  setMsg(on ? '正在开启守护…' : '正在关闭守护…');
   try {
-    const d = await App().Daemon();
-    const msg = d.running ? await App().StopDaemon() : await App().StartDaemon();
-    setMsg(msg, true);
+    const msg = await App().SetDaemonEnabled(on);
+    setMsg(msg || (on ? '守护已开启' : '守护已关闭'), true);
   } catch (e) {
     setMsg(String(e), false);
   }
-  btn.disabled = false;
-  await loadDaemon();
+  sw.style.pointerEvents = '';
+  await refresh();
 }
 
 const CARRIER_NAMES = { cmcc: '中国移动', ctcc: '中国电信', cucc: '中国联通', campus: '校园线路' };
@@ -790,6 +791,10 @@ async function saveCred() {
     document.getElementById('pass').value = '';
     selectedUser = username;
     await refresh();
+    // 守护开关默认开启：首次保存账号后自动把守护拉起来，不必再手动点一次。
+    if (App().EnsureDaemon) {
+      App().EnsureDaemon().then(function (m) { if (m) setMsg(m, true); }).catch(function () { });
+    }
   } catch (e) {
     el.textContent = String(e);
     el.className = 'msg bad';
@@ -816,7 +821,7 @@ async function toggleAutostart() {
 /* ---------- 新手引导 ---------- */
 const TUTORIAL_STEPS = [
   {
-    title: '欢迎使用 epo',
+    title: '欢迎使用 easynet',
     text: '连上校园 Wi-Fi 后自动完成认证，不用再打开门户输入账号密码。下面用 4 步带你完成设置。',
   },
   {
@@ -828,8 +833,8 @@ const TUTORIAL_STEPS = [
   {
     page: 'overview',
     target: '.daemon-bar',
-    title: '第 2 步 · 启动守护',
-    text: '点「启动守护」后，掉线会在几秒内自动重连，期间不需要打开界面。',
+    title: '第 2 步 · 打开守护',
+    text: '守护开关默认打开。开启后掉线会在几秒内自动重连，期间不需要打开界面。',
   },
   {
     target: '#autoSwitch',

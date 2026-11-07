@@ -4,10 +4,10 @@ package app
 import (
 	"path/filepath"
 
-	"github.com/love486love/epo-2026/internal/config"
+	"github.com/love486love/easynet/internal/config"
 )
 
-// LoadProfile 读取 profile：path 为空时使用 %LOCALAPPDATA%\epo\config.json。
+// LoadProfile 读取 profile：path 为空时使用 %LOCALAPPDATA%\easynet\config.json。
 // 配置缺失时回退到内置默认值，保证首次运行也能探针。
 func LoadProfile(path string) (config.Profile, error) {
 	if path != "" {

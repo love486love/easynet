@@ -167,5 +167,6 @@ GET http://172.16.121.9:801/eportal/?c=ACSetting&a=Login&url=drappall
 | 密码错误与退避 | ✅ PASS | 真实学号（已脱敏）+ 错误密码：3 次失败（16:32:08 / 16:32:11 / 16:32:15），间隔 3s → 3s → 45s；门户返回「您的融合门户密码错误，请检查账号密码ldap auth error」。假账号则返回「账号不存在」，两类失败文案不同 |
 
 验证工具：`tools\verify.bat`（菜单：1 expire / 2 relogin / 3 badpass / 4 check），完整时间线写入 `tools\verify-<模式>-<时间>.log`，结论写入同名 `.summary.txt`。
+该脚本依赖的命令行入口已随 v0.1.0 的产物合并（单 exe + `--daemon`）移除，此处仅作为历史记录保留。
 
 **失败文案结论**：门户对"账号不存在"与"密码错误"返回不同 `msg`，且密码错误文案可直接展示给用户；程序无需自行推断原因，按 `result=0` + `msg` 透传即可。

@@ -17,13 +17,13 @@ const (
 
 var sensitiveParams = regexp.MustCompile(`(user_password|wlan_user_mac|usermac|user_account)=([^&"'\s]+)`)
 
-// New 在 dir 下创建 epo.log 并返回 JSON 行格式的 logger。
+// New 在 dir 下创建 easynet.log 并返回 JSON 行格式的 logger。
 // 返回的 close 函数必须在退出前调用。
 func New(dir string) (*slog.Logger, func() error, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, nil, err
 	}
-	path := filepath.Join(dir, "epo.log")
+	path := filepath.Join(dir, "easynet.log")
 	if fi, err := os.Stat(path); err == nil && fi.Size() > maxLogSize {
 		rotate(path)
 	}

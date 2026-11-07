@@ -71,8 +71,8 @@ func Default() Profile {
 		Network: NetworkConfig{
 			SSID: "JXAU-Stu",
 			Probes: []Probe{
-				{URL: "http://www.jxau.edu.cn/?epo=1", Expect: "jxau.edu.cn"},
-				{URL: "http://www.baidu.com/?epo=1", Expect: "baidu.com"},
+				{URL: "http://www.jxau.edu.cn/?easynet=1", Expect: "jxau.edu.cn"},
+				{URL: "http://www.baidu.com/?easynet=1", Expect: "baidu.com"},
 			},
 			ProbeHosts: []string{"www.jxau.edu.cn", "jxau.edu.cn"},
 		},
@@ -104,7 +104,7 @@ func Default() Profile {
 	}
 }
 
-// UserDir 返回 %LOCALAPPDATA%\epo。
+// UserDir 返回 %LOCALAPPDATA%\easynet。
 // 刻意不用 %APPDATA%（漫游）：漫游目录会随账号同步到其它机器，
 // 而 DPAPI 密文绑定本机，同步过去反而解密失败。
 func UserDir() (string, error) {
@@ -112,11 +112,11 @@ func UserDir() (string, error) {
 	if base == "" {
 		return "", fmt.Errorf("环境变量 LOCALAPPDATA 未设置")
 	}
-	return filepath.Join(base, "epo"), nil
+	return filepath.Join(base, "easynet"), nil
 }
 
 // LogDir 返回日志目录：优先程序目录下的 log（不占系统盘、随程序一起删除），
-// 程序目录不可写（例如装在 Program Files）时回退到 %LOCALAPPDATA%\epo\logs。
+// 程序目录不可写（例如装在 Program Files）时回退到 %LOCALAPPDATA%\easynet\logs。
 func LogDir() string {
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Join(filepath.Dir(exe), "log")
@@ -131,7 +131,7 @@ func LogDir() string {
 	if d, err := UserDir(); err == nil {
 		return filepath.Join(d, "logs")
 	}
-	return filepath.Join(os.TempDir(), "epo", "logs")
+	return filepath.Join(os.TempDir(), "easynet", "logs")
 }
 
 // Load 从指定路径读取 profile；文件不存在时返回默认配置。

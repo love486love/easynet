@@ -1,4 +1,4 @@
-module github.com/love486love/epo-2026
+module github.com/love486love/easynet
 
 go 1.22.0
 

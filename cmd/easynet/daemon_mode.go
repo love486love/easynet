@@ -1,5 +1,3 @@
-// epo-daemon 是无控制台的常驻守护入口（windowsgui 子系统）。
-// 开机自启直接指向本程序：启动后即开始守护，并在系统托盘显示状态。
 package main
 
 import (
@@ -7,13 +5,18 @@ import (
 
 	"fyne.io/systray"
 
-	"github.com/love486love/epo-2026/internal/app"
-	"github.com/love486love/epo-2026/internal/config"
-	"github.com/love486love/epo-2026/internal/logx"
-	"github.com/love486love/epo-2026/internal/state"
+	"github.com/love486love/easynet/internal/app"
+	"github.com/love486love/easynet/internal/config"
+	"github.com/love486love/easynet/internal/logx"
+	"github.com/love486love/easynet/internal/state"
 )
 
-func main() {
+// daemonArg 让同一个 exe 承担两个角色：不带参数是图形界面，带它是后台守护。
+// 这样发行包里只有一个 exe，开机自启也指向它，不必再维护第二份二进制。
+const daemonArg = "--daemon"
+
+// runDaemonMode 无窗口运行守护进程，并在系统托盘显示状态。
+func runDaemonMode() {
 	done := make(chan struct{})
 	go func() {
 		if err := app.RunDaemon(""); err != nil {
@@ -37,13 +40,13 @@ func main() {
 	}
 }
 
-// recordError 在 windowsgui 无控制台的情况下把启动错误写进日志。
+// recordError 在 windowsgui 无控制台的情况下把启动错误写进日志与状态快照。
 func recordError(err error) {
 	dir, derr := config.UserDir()
 	if derr != nil {
 		return
 	}
-	// 写进状态快照，界面能直接看到失败原因（例如"读取凭据失败"）。
+	// 界面靠状态快照展示失败原因（例如"读取凭据失败"）。
 	_ = state.Write(dir, state.Snapshot{State: "stopped", Message: "启动失败: " + err.Error()})
 	logger, closeLog, lerr := logx.New(config.LogDir())
 	if lerr != nil {

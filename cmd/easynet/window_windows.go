@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-const appWindowTitle = "epo · 校园网自动认证"
+const appWindowTitle = "easynet · 校园网自动认证"
 
 var (
 	user32                  = syscall.NewLazyDLL("user32.dll")
@@ -16,6 +16,7 @@ var (
 	procShowWindow          = user32.NewProc("ShowWindow")
 	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
 	procMessageBoxW         = user32.NewProc("MessageBoxW")
+	procPostMessageW        = user32.NewProc("PostMessageW")
 )
 
 // focusExistingWindow 找到已运行实例的窗口并恢复/置前。

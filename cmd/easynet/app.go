@@ -9,15 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/love486love/epo-2026/internal/autostart"
-	"github.com/love486love/epo-2026/internal/config"
-	"github.com/love486love/epo-2026/internal/creds"
-	"github.com/love486love/epo-2026/internal/netinfo"
-	"github.com/love486love/epo-2026/internal/portal"
-	"github.com/love486love/epo-2026/internal/portal/drcom"
-	"github.com/love486love/epo-2026/internal/session"
-	"github.com/love486love/epo-2026/internal/state"
-	"github.com/love486love/epo-2026/internal/trust"
+	"github.com/love486love/easynet/internal/autostart"
+	"github.com/love486love/easynet/internal/config"
+	"github.com/love486love/easynet/internal/creds"
+	"github.com/love486love/easynet/internal/netinfo"
+	"github.com/love486love/easynet/internal/portal"
+	"github.com/love486love/easynet/internal/portal/drcom"
+	"github.com/love486love/easynet/internal/session"
+	"github.com/love486love/easynet/internal/state"
+	"github.com/love486love/easynet/internal/trust"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -69,13 +69,18 @@ func NewApp() *App {
 	prof := config.Default()
 	dir, err := config.UserDir()
 	if err != nil {
-		dir = filepath.Join(os.TempDir(), "epo")
+		dir = filepath.Join(os.TempDir(), "easynet")
 	}
 	return &App{prof: prof, dir: dir}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// 守护开关默认开启：界面就绪后自动补上，用户不必每次手动点一次。
+	go func() {
+		time.Sleep(1500 * time.Millisecond)
+		_, _ = a.EnsureDaemon()
+	}()
 }
 
 // Status 采集本机网络与认证状态。
@@ -195,19 +200,20 @@ func (a *App) Accounts() []AccountInfo {
 	return out
 }
 
-// SelectAccount 切换当前账号；守护若在运行则停止，重启后使用新账号。
+// SelectAccount 切换当前账号；守护若在运行则用新账号重启。
 func (a *App) SelectAccount(username string) (string, error) {
 	if _, err := creds.SelectAccount(a.dir, username); err != nil {
 		return "", err
 	}
 	if a.Daemon().Running {
 		_ = state.RequestStop(a.dir)
-		return "已切换账号，守护已停止（重新启动后生效）", nil
+		go a.restartDaemon()
+		return "已切换账号，守护正在用新账号重启", nil
 	}
 	return "已切换账号", nil
 }
 
-// DeleteAccount 删除指定账号；守护若在运行则停止。
+// DeleteAccount 删除指定账号；删除当前账号且守护在运行时重启守护。
 func (a *App) DeleteAccount(username string) (string, error) {
 	if username == "" {
 		return "", fmt.Errorf("未指定账号")
@@ -217,7 +223,8 @@ func (a *App) DeleteAccount(username string) (string, error) {
 	}
 	if a.Daemon().Running {
 		_ = state.RequestStop(a.dir)
-		return "账号已删除，守护已停止", nil
+		go a.restartDaemon()
+		return "账号已删除，守护正在重启", nil
 	}
 	return "账号已删除", nil
 }
@@ -241,11 +248,7 @@ func (a *App) SetAutostart(enabled bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	daemon := filepath.Join(filepath.Dir(exe), "epo-daemon.exe")
-	if _, err := os.Stat(daemon); err != nil {
-		return "", fmt.Errorf("缺少 epo-daemon.exe，无法设置开机自启")
-	}
-	if err := autostart.Enable(daemon); err != nil {
+	if err := autostart.Enable(exe, daemonArg); err != nil {
 		return "", err
 	}
 	return "已开启开机自启", nil
@@ -253,7 +256,7 @@ func (a *App) SetAutostart(enabled bool) (string, error) {
 
 // Logs 返回日志尾部 40 行。
 func (a *App) Logs() []string {
-	data, err := os.ReadFile(filepath.Join(config.LogDir(), "epo.log"))
+	data, err := os.ReadFile(filepath.Join(config.LogDir(), "easynet.log"))
 	if err != nil {
 		return []string{}
 	}
@@ -283,7 +286,7 @@ func (a *App) SaveLogAs() (string, error) {
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "导出运行日志",
-		DefaultFilename: "epo-log-" + time.Now().Format("2006-01-02-15-04-05") + ".txt",
+		DefaultFilename: "easynet-log-" + time.Now().Format("2006-01-02-15-04-05") + ".txt",
 		Filters:         []runtime.FileFilter{{DisplayName: "文本文件 (*.txt)", Pattern: "*.txt"}},
 	})
 	if err != nil {
@@ -292,7 +295,7 @@ func (a *App) SaveLogAs() (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	data, err := os.ReadFile(filepath.Join(config.LogDir(), "epo.log"))
+	data, err := os.ReadFile(filepath.Join(config.LogDir(), "easynet.log"))
 	if err != nil {
 		return "", fmt.Errorf("读取日志失败: %w", err)
 	}
@@ -346,7 +349,7 @@ func (a *App) Daemon() DaemonInfo {
 	}
 }
 
-// StartDaemon 拉起 epo-daemon.exe。守护是独立进程，关闭界面后仍在运行。
+// StartDaemon 拉起本程序的守护模式。守护是独立进程，关闭界面后仍在运行。
 func (a *App) StartDaemon() (string, error) {
 	if a.Daemon().Running {
 		return "守护已在运行", nil
@@ -355,15 +358,11 @@ func (a *App) StartDaemon() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(filepath.Dir(exe), "epo-daemon.exe")
-	if _, err := os.Stat(path); err != nil {
-		return "", fmt.Errorf("未找到 epo-daemon.exe，请与 epo-gui.exe 放在同一目录")
-	}
 	if err := state.ClearStop(a.dir); err != nil {
 		return "", err
 	}
-	cmd := exec.Command(path)
-	cmd.Dir = filepath.Dir(path)
+	cmd := exec.Command(exe, daemonArg)
+	cmd.Dir = filepath.Dir(exe)
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("启动守护失败: %w", err)
 	}
@@ -393,4 +392,59 @@ func (a *App) StopDaemon() (string, error) {
 		}
 	}
 	return "已发送停止请求，守护将在下一轮检查后退出", nil
+}
+
+// daemonOffFile 是「守护开关已关闭」的标记文件；不存在时视为开启，因此默认就是开着。
+const daemonOffFile = "daemon_off"
+
+// DaemonEnabled 报告守护开关是否开启。默认开启。
+func (a *App) DaemonEnabled() bool {
+	_, err := os.Stat(filepath.Join(a.dir, daemonOffFile))
+	return os.IsNotExist(err)
+}
+
+// SetDaemonEnabled 持久化守护开关，并按需启停守护进程。
+// 开启状态会一直保留：关掉界面、甚至从托盘退出后，重新打开界面都会自动恢复守护。
+func (a *App) SetDaemonEnabled(enabled bool) (string, error) {
+	marker := filepath.Join(a.dir, daemonOffFile)
+	if enabled {
+		if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
+			return "", err
+		}
+		if a.Daemon().Running {
+			return "守护已在运行", nil
+		}
+		return a.StartDaemon()
+	}
+	if err := os.WriteFile(marker, []byte("1"), 0o644); err != nil {
+		return "", err
+	}
+	return a.StopDaemon()
+}
+
+// EnsureDaemon 在开关开启且已有账号时拉起守护；不满足条件时静默跳过。
+func (a *App) EnsureDaemon() (string, error) {
+	if !a.DaemonEnabled() {
+		return "", nil
+	}
+	if a.Daemon().Running {
+		return "", nil
+	}
+	if _, err := creds.Load(a.dir); err != nil {
+		return "", nil
+	}
+	return a.StartDaemon()
+}
+
+// restartDaemon 等旧守护退出后，按开关决定是否用新账号重新拉起。
+func (a *App) restartDaemon() {
+	deadline := time.Now().Add(12 * time.Second)
+	for time.Now().Before(deadline) {
+		if !a.Daemon().Running {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	_ = state.ClearStop(a.dir)
+	_, _ = a.EnsureDaemon()
 }
