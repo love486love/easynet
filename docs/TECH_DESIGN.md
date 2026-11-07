@@ -854,3 +854,9 @@ TOFU 首次信任值已落地，后续登录若网关 MAC 变化会被拒绝并�
 **与 §26 的关系**：§26 的本地 Web 界面保留为**备选**（无 WebView2 时可用）；原生窗口为标准形态。
 
 **工程影响**：`go.mod` 升到 `go 1.22.0` 并引入 Wails 依赖；`internal/session` 抽出 CLI 与 GUI 共用的探针/参数解析逻辑，避免两套实现漂移。
+
+**界面形态**：参考 SniShaper 的桌面软件布局，采用无边框窗口（`Frameless: true`，1000×680），自绘标题栏（品牌 + 最小化/最大化/关闭，拖动区通过 CSS `--wails-draggable: drag` 声明），左侧 220px 导航（概览 / 账号 / 运行日志 / 关于），底部开机自启开关与版本号。
+
+**深浅双主题**：两套 CSS 变量（`#0d1117` 深色 / `#f6f8fa` 浅色），标题栏右侧太阳/月亮按钮切换；选择写入 `localStorage`，首次启动按 `prefers-color-scheme` 跟随系统；切换时调用 `WindowSetBackgroundColour` 同步窗口底色，避免无边框窗口在着色边缘露出异色。
+
+**注意**：`.gitignore` 中的 `dist/` 必须写成 `/dist/`，否则会连带忽略 `cmd/epo-gui/frontend/dist/index.html`，导致仓库缺少界面源码。
