@@ -3,10 +3,12 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -29,17 +31,35 @@ func installedMode() bool {
 	return false
 }
 
-// applyInstaller 适用于安装版：下载新版安装包并静默运行。
+// applyInstaller 适用于安装版：下载新版安装包、校验后静默运行。
 func applyInstaller(info UpdateInfo, emit progressEmitter) (string, error) {
 	if info.setup.API == "" {
 		return "", fmt.Errorf("安装版更新需要新版安装包，请到 Release 页面手动下载")
 	}
+	if info.sum.API == "" {
+		return "", fmt.Errorf("当前发布缺少校验文件，请到 Release 页面手动下载")
+	}
 	stopDaemonForUpdate()
+
+	sumData, err := downloadAsset(info.sum, nil)
+	if err != nil {
+		return "", fmt.Errorf("下载校验文件失败：%v", err)
+	}
+	want, err := parseChecksum(sumData, info.setup.Name)
+	if err != nil {
+		return "", err
+	}
 
 	data, err := downloadAsset(info.setup, emit)
 	if err != nil {
 		return "", fmt.Errorf("下载安装包失败：%v", err)
 	}
+
+	got := sha256.Sum256(data)
+	if !strings.EqualFold(fmt.Sprintf("%x", got), want) {
+		return "", fmt.Errorf("安装包校验失败，已取消更新，当前版本未改动")
+	}
+
 	path := filepath.Join(os.TempDir(), "easynet-setup.exe")
 	if err := os.WriteFile(path, data, 0o755); err != nil {
 		return "", fmt.Errorf("保存安装包失败：%v", err)

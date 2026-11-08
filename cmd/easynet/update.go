@@ -34,6 +34,7 @@ type assetRef struct {
 	API     string
 	Browser string
 	Size    int64
+	Name    string
 }
 
 // progressEmitter 把下载进度推给界面：百分比与速度（KB/s）。
@@ -165,7 +166,7 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 		Body:    rel.Body,
 	}
 	for _, as := range rel.Assets {
-		ref := assetRef{API: as.URL, Browser: as.Browser, Size: as.Size}
+		ref := assetRef{API: as.URL, Browser: as.Browser, Size: as.Size, Name: as.Name}
 		switch {
 		case as.Name == "easynet.exe":
 			info.exe = ref
