@@ -5,28 +5,45 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/minio/selfupdate"
 )
 
-const releaseAPI = "https://api.github.com/repos/love486love/easynet/releases/latest"
+const (
+	releaseAPI = "https://api.github.com/repos/love486love/easynet/releases/latest"
+	userAgent  = "easynet"
+	// chunks 是分块下载的并发数。部分校园网出口对单连接限速在十几 KB/s，
+	// 多连接可以叠加带宽；并发再调高反而会被出口限制，8 路实测最稳。
+	chunks = 8
+)
+
+// assetRef 记录一个 Release 资产的两个下载入口：
+// API 入口会 302 到真实文件域，能绕开被网关拦截的 github.com 直链。
+type assetRef struct {
+	API     string
+	Browser string
+	Size    int64
+}
 
 // UpdateInfo 是一次更新检查的结果。
 type UpdateInfo struct {
-	Current     string `json:"current"`
-	Latest      string `json:"latest"`
-	HasUpdate   bool   `json:"has_update"`
-	URL         string `json:"url"`
-	Body        string `json:"body"`
-	ExeURL      string `json:"exe_url"`
-	SetupURL    string `json:"setup_url"`
-	ChecksumURL string `json:"checksum_url"`
-	CanAuto     bool   `json:"can_auto"`
+	Current   string `json:"current"`
+	Latest    string `json:"latest"`
+	HasUpdate bool   `json:"has_update"`
+	URL       string `json:"url"`
+	Body      string `json:"body"`
+	CanAuto   bool   `json:"can_auto"`
+
+	exe   assetRef
+	sum   assetRef
+	setup assetRef
 }
 
 // CheckUpdate 查询 GitHub 上的最新 Release，并与当前版本比较。
@@ -39,7 +56,7 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 		return UpdateInfo{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "easynet")
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -56,8 +73,10 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 		HTMLURL string `json:"html_url"`
 		Body    string `json:"body"`
 		Assets  []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
+			Name    string `json:"name"`
+			URL     string `json:"url"`
+			Browser string `json:"browser_download_url"`
+			Size    int64  `json:"size"`
 		} `json:"assets"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
@@ -71,17 +90,18 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 		Body:    rel.Body,
 	}
 	for _, as := range rel.Assets {
+		ref := assetRef{API: as.URL, Browser: as.Browser, Size: as.Size}
 		switch {
 		case as.Name == "easynet.exe":
-			info.ExeURL = as.URL
+			info.exe = ref
 		case as.Name == "checksums.txt":
-			info.ChecksumURL = as.URL
+			info.sum = ref
 		case strings.HasPrefix(as.Name, "easynet-setup-") && strings.HasSuffix(as.Name, ".exe"):
-			info.SetupURL = as.URL
+			info.setup = ref
 		}
 	}
 	info.HasUpdate = versionLess(info.Current, info.Latest)
-	info.CanAuto = (info.ExeURL != "" && info.ChecksumURL != "") || info.SetupURL != ""
+	info.CanAuto = (info.exe.API != "" && info.sum.API != "") || info.setup.API != ""
 	return info, nil
 }
 
@@ -107,12 +127,12 @@ func (a *App) ApplyUpdate() (string, error) {
 
 // applyGreen 适用于绿色版：下载裸 exe、校验、原地替换。
 func applyGreen(info UpdateInfo) (string, error) {
-	if info.ExeURL == "" || info.ChecksumURL == "" {
+	if info.exe.API == "" || info.sum.API == "" {
 		return "", fmt.Errorf("当前发布缺少 exe 或校验文件，请手动下载更新")
 	}
 	stopDaemonForUpdate()
 
-	sumData, err := downloadAsset(info.ChecksumURL)
+	sumData, err := downloadAsset(info.sum)
 	if err != nil {
 		return "", fmt.Errorf("下载校验文件失败：%v", err)
 	}
@@ -121,7 +141,7 @@ func applyGreen(info UpdateInfo) (string, error) {
 		return "", err
 	}
 
-	data, err := downloadAsset(info.ExeURL)
+	data, err := downloadAsset(info.exe)
 	if err != nil {
 		return "", fmt.Errorf("下载新版本失败：%v", err)
 	}
@@ -142,25 +162,167 @@ func applyGreen(info UpdateInfo) (string, error) {
 	return "更新完成，正在重启…", nil
 }
 
-func downloadAsset(url string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+// downloadAsset 下载一个资产。先通过资产 API 换取带签名的真实地址，
+// 再按文件大小选择单连接或并发分块。
+func downloadAsset(ref assetRef) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
+	realURL, err := resolveAsset(ctx, ref.API)
+	if err != nil {
+		// API 不可用时退回直链；境外网络下直链通常更快。
+		if ref.Browser == "" {
+			return nil, err
+		}
+		realURL = ref.Browser
+		ref.Size = 0
+	}
+
+	if ref.Size >= 1<<20 {
+		return downloadChunked(ctx, realURL, ref.Size)
+	}
+	return downloadSimple(ctx, realURL)
+}
+
+// resolveAsset 用资产 API 换取 302 的真实下载地址。
+func resolveAsset(ctx context.Context, apiURL string) (string, error) {
+	if apiURL == "" {
+		return "", errors.New("没有可用的下载地址")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/octet-stream")
+	req.Header.Set("User-Agent", userAgent)
+
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusSeeOther &&
+		resp.StatusCode != http.StatusTemporaryRedirect {
+		return "", fmt.Errorf("获取下载地址失败（HTTP %d）", resp.StatusCode)
+	}
+	loc := resp.Header.Get("Location")
+	if loc == "" {
+		return "", errors.New("获取下载地址失败（无跳转目标）")
+	}
+	return loc, nil
+}
+
+func downloadSimple(ctx context.Context, url string) ([]byte, error) {
+	if url == "" {
+		return nil, errors.New("没有可用的下载地址")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "easynet")
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
+}
+
+// downloadChunked 把文件切成若干段并发下载，失败的分片会重试。
+func downloadChunked(ctx context.Context, url string, size int64) ([]byte, error) {
+	n := int64(chunks)
+	if size < n*256<<10 {
+		n = 4
+	}
+	chunkSize := (size + n - 1) / n
+	out := make([]byte, size)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+
+	for i := int64(0); i < n; i++ {
+		start := i * chunkSize
+		if start >= size {
+			break
+		}
+		end := start + chunkSize - 1
+		if end >= size {
+			end = size - 1
+		}
+		wg.Add(1)
+		go func(start, end int64) {
+			defer wg.Done()
+			data, err := downloadRange(ctx, url, start, end)
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+				return
+			}
+			copy(out[start:end+1], data)
+		}(start, end)
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return out, nil
+}
+
+func downloadRange(ctx context.Context, url string, start, end int64) ([]byte, error) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			}
+		}
+		data, err := downloadRangeOnce(ctx, url, start, end)
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+func downloadRangeOnce(ctx context.Context, url string, start, end int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	buf := make([]byte, end-start+1)
+	if _, err := io.ReadFull(resp.Body, buf); err != nil {
+		return nil, err
+	}
+	return buf, nil
 }
 
 // parseChecksum 从 checksums.txt 中取出指定文件的 SHA256。

@@ -31,12 +31,12 @@ func installedMode() bool {
 
 // applyInstaller 适用于安装版：下载新版安装包并静默运行。
 func applyInstaller(info UpdateInfo) (string, error) {
-	if info.SetupURL == "" {
+	if info.setup.API == "" {
 		return "", fmt.Errorf("安装版更新需要新版安装包，请到 Release 页面手动下载")
 	}
 	stopDaemonForUpdate()
 
-	data, err := downloadAsset(info.SetupURL)
+	data, err := downloadAsset(info.setup)
 	if err != nil {
 		return "", fmt.Errorf("下载安装包失败：%v", err)
 	}
