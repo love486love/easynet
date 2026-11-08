@@ -41,7 +41,11 @@ jobs:
             $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
             "$h  $($_.Name)"
           }
-          $lines | Out-File dist/checksums.txt -Encoding utf8
+          [System.IO.File]::WriteAllLines(
+            (Join-Path $PWD "dist/checksums.txt"),
+            $lines,
+            (New-Object System.Text.UTF8Encoding($false))
+          )
           Compress-Archive -Path dist/* -DestinationPath easynet-windows-x64.zip -Force
           (Get-FileHash easynet-windows-x64.zip -Algorithm SHA256).Hash.ToLower() |
             Out-File easynet-windows-x64.zip.sha256 -Encoding utf8
@@ -61,5 +65,7 @@ jobs:
           files: |
             easynet-windows-x64.zip
             easynet-windows-x64.zip.sha256
+            dist/easynet.exe
+            dist/checksums.txt
             dist-installer/easynet-setup-*.exe
           body_path: docs/RELEASE_NOTES.md

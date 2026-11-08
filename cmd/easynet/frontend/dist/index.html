@@ -309,6 +309,13 @@
   .pill.on { color: #f59e0b; border-color: #f59e0b; background: rgba(245, 158, 11, .12); }
   .about-line { margin-top: 8px; font-size: 12.5px; color: var(--faint); }
   .about-btns { display: flex; gap: 8px; margin-top: 14px; }
+  .update-notes {
+    margin-top: 12px; max-height: 190px; overflow: auto; padding: 11px 13px; border-radius: 9px;
+    background: var(--bg); border: 1px solid var(--line); color: var(--muted);
+    font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; text-align: left;
+  }
+  .update-notes[hidden] { display: none; }
+  .update-go { width: 100%; margin-top: 10px; }
   .about-foot { margin-top: 4px; text-align: center; font-size: 11.5px; color: var(--faint); }
   .about-foot a { color: var(--faint); text-decoration: none; margin: 0 6px; cursor: pointer; }
   .about-foot a:hover { color: var(--muted); text-decoration: underline; }
@@ -368,7 +375,7 @@
         </div>
       </nav>
       <div class="sidebar-foot">
-        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.1.1</div>
+        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.3</div>
       </div>
     </aside>
 
@@ -554,7 +561,7 @@
           <div class="about-head">
             <img class="about-logo" src="appicon.png" alt="easynet">
             <div class="about-name">easynet</div>
-            <span class="about-ver" onclick="checkUpdate(false)">v0.4.1.1</span>
+            <span class="about-ver" onclick="checkUpdate(false)">v0.4.3</span>
             <div class="about-sub">江西农业大学校园网自动认证客户端</div>
           </div>
 
@@ -571,6 +578,8 @@
             <button class="btn primary" onclick="checkUpdate(false)">重新检查</button>
             <button class="btn" onclick="openRelease()">查看更新说明</button>
           </div>
+          <pre class="update-notes" id="updateNotes" hidden></pre>
+          <button class="btn primary update-go" id="updateBtn" hidden onclick="doUpdate()">立即更新</button>
           <div class="msg" id="updateMsg"></div>
 
           <div class="about-div"></div>
@@ -1038,6 +1047,8 @@ async function checkUpdate(silent) {
   const pill = document.getElementById('updatePill');
   const st = document.getElementById('updateState');
   const nums = document.getElementById('updateNums');
+  const notes = document.getElementById('updateNotes');
+  const btn = document.getElementById('updateBtn');
 
   if (pill) { pill.textContent = '检查中'; pill.classList.remove('on'); }
   if (st && !silent) st.textContent = '正在检查最新版本…';
@@ -1065,17 +1076,49 @@ async function checkUpdate(silent) {
     if (st) st.textContent = u.has_update ? ('发现新版本 v' + u.latest) : ('当前已是最新版本 ' + u.current);
     if (nums) nums.textContent = '当前 ' + u.current + '      最新 ' + u.latest;
 
+    if (notes) {
+      if (u.has_update && u.body) {
+        notes.hidden = false;
+        notes.textContent = u.body;
+      } else {
+        notes.hidden = true;
+        notes.textContent = '';
+      }
+    }
+    if (btn) {
+      btn.hidden = !(u.has_update && u.can_auto);
+      btn.disabled = false;
+      if (u.has_update && u.can_auto) btn.textContent = '立即更新到 v' + u.latest;
+    }
+
     if (msg && !silent && u.has_update) {
       msg.className = 'msg ok';
       msg.textContent = '新版本 v' + u.latest + ' 已发布，点击「查看更新说明」了解变化。';
     }
   } catch (e) {
     if (pill) { pill.textContent = '检查失败'; pill.classList.remove('on'); }
+    if (btn) btn.hidden = true;
     if (st && !silent) st.textContent = '无法获取更新信息，请检查网络后重试';
     if (msg && !silent) {
       msg.className = 'msg bad';
       msg.textContent = (e && e.message) ? e.message : String(e);
     }
+  }
+}
+
+async function doUpdate() {
+  if (!App()) return;
+  const btn = document.getElementById('updateBtn');
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '正在下载并安装…';
+  try {
+    const msg = await App().ApplyUpdate();
+    toast(msg, true);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = label;
+    toast((e && e.message) ? e.message : String(e), false);
   }
 }
 
