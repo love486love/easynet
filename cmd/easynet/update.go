@@ -23,6 +23,9 @@ const (
 	// chunks 是分块下载的并发数。部分校园网出口对单连接限速在十几 KB/s，
 	// 多连接可以叠加带宽；并发再调高反而会被出口限制，8 路实测最稳。
 	chunks = 8
+	// maxAttempts 是接口请求的最大尝试次数。校园网出口会偶发 504，
+	// 有限次重试后仍失败就直接报错，不会无限循环。
+	maxAttempts = 4
 )
 
 // assetRef 记录一个 Release 资产的两个下载入口：
@@ -128,25 +131,17 @@ type UpdateInfo struct {
 
 // CheckUpdate 查询 GitHub 上的最新 Release，并与当前版本比较。
 func (a *App) CheckUpdate() (UpdateInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseAPI, nil)
+	resp, err := requestWithRetry(ctx, http.DefaultClient, releaseAPI, map[string]string{
+		"Accept":     "application/vnd.github+json",
+		"User-Agent": userAgent,
+	}, func(r *http.Response) bool { return r.StatusCode == http.StatusOK })
 	if err != nil {
-		return UpdateInfo{}, err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", userAgent)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return UpdateInfo{}, fmt.Errorf("无法连接 GitHub，请检查网络后重试")
+		return UpdateInfo{}, fmt.Errorf("无法连接 GitHub，请稍后重试")
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return UpdateInfo{}, fmt.Errorf("查询更新失败（HTTP %d）", resp.StatusCode)
-	}
 
 	var rel struct {
 		TagName string `json:"tag_name"`
@@ -276,26 +271,22 @@ func resolveAsset(ctx context.Context, apiURL string) (string, error) {
 	if apiURL == "" {
 		return "", errors.New("没有可用的下载地址")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/octet-stream")
-	req.Header.Set("User-Agent", userAgent)
 
 	client := &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	resp, err := client.Do(req)
+	resp, err := requestWithRetry(ctx, client, apiURL, map[string]string{
+		"Accept":     "application/octet-stream",
+		"User-Agent": userAgent,
+	}, func(r *http.Response) bool {
+		return r.StatusCode == http.StatusFound || r.StatusCode == http.StatusSeeOther ||
+			r.StatusCode == http.StatusTemporaryRedirect
+	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("获取下载地址失败：%v", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusSeeOther &&
-		resp.StatusCode != http.StatusTemporaryRedirect {
-		return "", fmt.Errorf("获取下载地址失败（HTTP %d）", resp.StatusCode)
-	}
 	loc := resp.Header.Get("Location")
 	if loc == "" {
 		return "", errors.New("获取下载地址失败（无跳转目标）")
@@ -303,10 +294,70 @@ func resolveAsset(ctx context.Context, apiURL string) (string, error) {
 	return loc, nil
 }
 
+// requestWithRetry 发起 GET 请求，遇到网关类错误时按 2 秒递增退避重试。
+// 4xx（429 除外）视为确定性错误，直接返回，不做无意义的重试。
+func requestWithRetry(ctx context.Context, client *http.Client, url string, headers map[string]string, accept func(*http.Response) bool) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt*2) * time.Second):
+			}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if accept(resp) {
+			return resp, nil
+		}
+
+		lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		resp.Body.Close()
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+			return nil, lastErr
+		}
+	}
+	return nil, lastErr
+}
+
 func downloadSimple(ctx context.Context, url string, rep *progressReporter) ([]byte, error) {
 	if url == "" {
 		return nil, errors.New("没有可用的下载地址")
 	}
+
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt*2) * time.Second):
+			}
+		}
+		data, err := downloadSimpleOnce(ctx, url, rep)
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+func downloadSimpleOnce(ctx context.Context, url string, rep *progressReporter) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
