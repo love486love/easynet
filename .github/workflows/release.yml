@@ -59,6 +59,18 @@ jobs:
           & $iscc "/DMyAppVersion=$ver" packaging/easynet.iss
           Get-ChildItem dist-installer
 
+          # 安装包也要进 checksums.txt：安装版更新会据此校验下载结果。
+          $setup = Get-ChildItem dist-installer -Filter *.exe | Select-Object -First 1
+          if (-not $setup) { throw "installer not found" }
+          $lines = @(Get-Content -LiteralPath dist/checksums.txt)
+          $hash = (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLower()
+          $lines += "$hash  $($setup.Name)"
+          [System.IO.File]::WriteAllLines(
+            (Join-Path $PWD "dist/checksums.txt"),
+            $lines,
+            (New-Object System.Text.UTF8Encoding($false))
+          )
+
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:

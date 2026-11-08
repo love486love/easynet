@@ -66,10 +66,16 @@ type AccountInfo struct {
 
 // NewApp 读取 profile 与用户目录。凭据缺失不视为错误，界面里再引导填写。
 func NewApp() *App {
-	prof := config.Default()
 	dir, err := config.UserDir()
 	if err != nil {
 		dir = filepath.Join(os.TempDir(), "easynet")
+	}
+
+	// 用户目录下的 profile.json 可覆盖内置配置（换校区、改门户网段等）；
+	// 文件缺失或格式不合法时回退内置默认值，保证界面照常可用。
+	prof := config.Default()
+	if p, loadErr := config.Load(filepath.Join(dir, "profile.json")); loadErr == nil {
+		prof = p
 	}
 	return &App{prof: prof, dir: dir}
 }
