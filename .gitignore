@@ -4,10 +4,10 @@ docs/m0-raw-*.txt
 private/
 
 # 构建产物（注意 dist/ 只排除仓库根目录，frontend/dist 是手写界面源码必须入库）
-build/
+/build/
 bin/
 /dist/
-cmd/easynet/build/
+cmd/easynet/build/bin/
 cmd/easynet/frontend/node_modules/
 cmd/easynet/frontend/wailsjs/
 # go build ./... 在包目录生成的副产物

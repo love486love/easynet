@@ -30,13 +30,13 @@ func installedMode() bool {
 }
 
 // applyInstaller 适用于安装版：下载新版安装包并静默运行。
-func applyInstaller(info UpdateInfo) (string, error) {
+func applyInstaller(info UpdateInfo, emit progressEmitter) (string, error) {
 	if info.setup.API == "" {
 		return "", fmt.Errorf("安装版更新需要新版安装包，请到 Release 页面手动下载")
 	}
 	stopDaemonForUpdate()
 
-	data, err := downloadAsset(info.setup)
+	data, err := downloadAsset(info.setup, emit)
 	if err != nil {
 		return "", fmt.Errorf("下载安装包失败：%v", err)
 	}
