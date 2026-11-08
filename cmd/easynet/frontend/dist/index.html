@@ -395,7 +395,7 @@
           <div class="nw-bar"><i id="nwFill"></i></div>
           <div class="nw-times" id="nwEnd"></div>
         </div>
-        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.4</div>
+        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.5</div>
       </div>
     </aside>
 
@@ -581,7 +581,7 @@
           <div class="about-head">
             <img class="about-logo" src="appicon.png" alt="easynet">
             <div class="about-name">easynet</div>
-            <span class="about-ver" onclick="checkUpdate(false)">v0.4.4</span>
+            <span class="about-ver" onclick="checkUpdate(false)">v0.4.5</span>
             <div class="about-sub">江西农业大学校园网自动认证客户端</div>
           </div>
 
@@ -1339,8 +1339,13 @@ maybeStartTutorial();
 
 setTimeout(function () {
   const badge = document.getElementById('verBadge');
-  if (badge && App() && App().Version) {
-    try { badge.textContent = 'v' + App().Version(); } catch (e) { }
+  const aboutVer = document.querySelector('.about-ver');
+  if (App() && App().Version) {
+    try {
+      const v = 'v' + App().Version();
+      if (badge) badge.textContent = v;
+      if (aboutVer) aboutVer.textContent = v;
+    } catch (e) { }
   }
   checkUpdate(true);
 }, 2500);
