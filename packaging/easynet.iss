@@ -1,8 +1,8 @@
 ﻿; Inno Setup 脚本：生成带标准卸载项（unins000.exe）的安装包。
-; 版本号由 CI 通过 /DMyAppVersion=<tag> 注入，本地默认 0.4.5。
+; 版本号由 CI 通过 /DMyAppVersion=<tag> 注入，本地默认 0.4.5.1。
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.4.5"
+  #define MyAppVersion "0.4.5.1"
 #endif
 
 #define MyAppName "easynet"
