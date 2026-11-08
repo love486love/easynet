@@ -116,9 +116,9 @@
   .switch.on { background: var(--switch-on); border-color: var(--accent); }
   .switch.on::after { left: 19px; background: var(--accent); }
   .ver-badge {
-    display: block; text-align: center; padding: 5px 8px; border-radius: 8px;
+    display: block; text-align: center; padding: 12px 8px; border-radius: 10px;
     border: 1px solid var(--line); background: var(--panel); color: var(--faint);
-    font-size: 11.5px; cursor: pointer; user-select: none; transition: all .15s;
+    font-size: 13.5px; font-weight: 600; cursor: pointer; user-select: none; transition: all .15s;
   }
   .ver-badge:hover { color: var(--muted); border-color: var(--line2); }
   .ver-badge.update {
@@ -280,6 +280,48 @@
   .tut-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line2); transition: background .15s; }
   .tut-dot.on { background: var(--accent); }
   .tut-skip { display: block; text-align: right; margin-top: 10px; font-size: 11.5px; }
+  /* ---------- 设置页 ---------- */
+  .set-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); margin-bottom: 10px; }
+  .set-icon {
+    width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center;
+    justify-content: center; flex: none; background: var(--bg); border: 1px solid var(--line); color: var(--muted);
+  }
+  .set-icon svg { width: 20px; height: 20px; }
+  .set-text { flex: 1; min-width: 0; }
+  .set-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+  .set-desc { font-size: 12px; color: var(--faint); margin-top: 3px; line-height: 1.5; }
+  .seg { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--bg); border: 1px solid var(--line); flex: none; }
+  .seg-item { padding: 5px 12px; border-radius: 7px; font-size: 12.5px; color: var(--muted); cursor: pointer; user-select: none; transition: all .15s; white-space: nowrap; }
+  .seg-item:hover { color: var(--fg); }
+  .seg-item.on { background: #3b82f6; color: #fff; font-weight: 600; }
+
+  /* ---------- 关于大卡片 ---------- */
+  .about-card { max-width: 600px; margin: 0 auto 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 30px 28px 22px; }
+  .about-head { text-align: center; }
+  .about-logo { width: 68px; height: 68px; border-radius: 15px; display: block; margin: 0 auto 14px; }
+  .about-name { font-size: 22px; font-weight: 700; color: var(--fg); letter-spacing: .5px; }
+  .about-ver { display: inline-block; margin-top: 6px; font-size: 13px; color: #16a34a; cursor: pointer; }
+  .about-ver:hover { text-decoration: underline; }
+  .about-sub { margin-top: 10px; font-size: 12.5px; color: var(--faint); }
+  .about-div { height: 1px; background: var(--line); margin: 20px 0 16px; }
+  .about-sec { display: flex; align-items: center; justify-content: space-between; font-size: 15px; font-weight: 600; color: var(--fg); }
+  .pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+  .pill.on { color: #f59e0b; border-color: #f59e0b; background: rgba(245, 158, 11, .12); }
+  .about-line { margin-top: 8px; font-size: 12.5px; color: var(--faint); }
+  .about-btns { display: flex; gap: 8px; margin-top: 14px; }
+  .about-foot { margin-top: 4px; text-align: center; font-size: 11.5px; color: var(--faint); }
+  .about-foot a { color: var(--faint); text-decoration: none; margin: 0 6px; cursor: pointer; }
+  .about-foot a:hover { color: var(--muted); text-decoration: underline; }
+  .about-foot span { margin: 0 6px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(8px);
+    opacity: 0; pointer-events: none; padding: 9px 16px; border-radius: 9px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    font-size: 12.5px; transition: all .2s; z-index: 900;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.bad { border-color: #e5484d; color: #e5484d; }
 </style>
 </head>
 <body>
@@ -316,21 +358,17 @@
           <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h7l3 3v11H3zM9 2v3h3"/></svg>
           <span>运行日志</span>
         </div>
+        <div class="nav-item" data-page="settings">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v2H2zM2 11h12v2H2zM5 2h2v4H5zM9 10h2v4H9z"/></svg>
+          <span>设置</span>
+        </div>
         <div class="nav-item" data-page="about">
           <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14zM7.2 4.2h1.6v1.6H7.2zM7.2 7h1.6v5H7.2z"/></svg>
           <span>关于</span>
         </div>
       </nav>
       <div class="sidebar-foot">
-        <div class="switch-row" title="开启后，守护发现没连校园网时会自动连回来">
-          <span>自动连接 Wi-Fi</span>
-          <div class="switch" id="wifiSwitch" onclick="toggleWifiAuto()"></div>
-        </div>
-        <div class="switch-row">
-          <span>开机自启</span>
-          <div class="switch" id="autoSwitch" onclick="toggleAutostart()"></div>
-        </div>
-        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.1</div>
+        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.1.1</div>
       </div>
     </aside>
 
@@ -447,18 +485,102 @@
         <div class="msg" id="logMsg"></div>
       </section>
 
+      <section class="page" id="page-settings">
+        <h2 class="page-title">设置</h2>
+        <div class="page-sub">外观与后台行为</div>
+
+        <div class="set-card">
+          <div class="set-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 4v16"/><path d="M12 4a8 8 0 0 1 0 16" fill="currentColor" fill-opacity=".22" stroke="none"/></svg>
+          </div>
+          <div class="set-text">
+            <div class="set-title">外观模式</div>
+            <div class="set-desc">在亮色、暗色或跟随系统之间切换，跟随系统会随 Windows 主题自动变化。</div>
+          </div>
+          <div class="seg" id="themeSeg">
+            <span class="seg-item" data-mode="light" onclick="applyTheme('light')">亮色</span>
+            <span class="seg-item" data-mode="dark" onclick="applyTheme('dark')">暗色</span>
+            <span class="seg-item" data-mode="auto" onclick="applyTheme('auto')">跟随系统</span>
+          </div>
+        </div>
+
+        <div class="set-card" id="setAutostart">
+          <div class="set-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.6a8 8 0 1 0 11.4 0"/></svg>
+          </div>
+          <div class="set-text">
+            <div class="set-title">开机自启</div>
+            <div class="set-desc">开机后守护自动运行，连上校园网即可完成认证。</div>
+          </div>
+          <div class="switch" id="autoSwitch" onclick="toggleAutostart()"></div>
+        </div>
+
+        <div class="set-card">
+          <div class="set-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 8.6a14 14 0 0 1 18 0"/><path d="M6.6 12a9 9 0 0 1 10.8 0"/><path d="M10 15.4a4 4 0 0 1 4 0"/><circle cx="12" cy="18.8" r="1.1" fill="currentColor" stroke="none"/></svg>
+          </div>
+          <div class="set-text">
+            <div class="set-title">自动连接校园 Wi-Fi</div>
+            <div class="set-desc">守护发现没连校园网时，自动连回 JXAU-Stu。</div>
+          </div>
+          <div class="switch" id="wifiSwitch" onclick="toggleWifiAuto()"></div>
+        </div>
+
+        <div class="set-card">
+          <div class="set-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M8 8h8M8 12h5"/></svg>
+          </div>
+          <div class="set-text">
+            <div class="set-title">新手引导</div>
+            <div class="set-desc">重新播放功能介绍，随时可以跳过。</div>
+          </div>
+          <button class="btn" onclick="startTutorial()">重新播放</button>
+        </div>
+
+        <div class="set-card">
+          <div class="set-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          </div>
+          <div class="set-text">
+            <div class="set-title">运行日志</div>
+            <div class="set-desc">日志保存在程序目录的 log 文件夹，便于排查问题。</div>
+          </div>
+          <button class="btn" onclick="openLogsDir()">打开目录</button>
+        </div>
+      </section>
+
       <section class="page" id="page-about">
-        <h2 class="page-title">关于</h2>
-        <div class="page-sub">江西农业大学校园网自动认证工具</div>
-        <div class="about-row"><span>版本</span><span>v0.4.1</span></div>
-        <div class="about-row"><span>检查更新</span><span class="link" onclick="checkUpdate(false)">立即检查</span></div>
-        <div class="msg" id="updateMsg"></div>
-        <div class="about-row"><span>新手引导</span><span class="link" onclick="startTutorial()">重新播放</span></div>
-        <div class="about-row"><span>仓库</span><span class="link" onclick="openRepo()">github.com/love486love/easynet</span></div>
-        <div class="about-row"><span>协议</span><span>MIT</span></div>
-        <div class="about-row"><span>数据</span><span>全部保存在本机，无联网上报</span></div>
-        <div class="hint">
-          首次登录会记录网关 MAC 并加入信任列表，之后若检测到网关 MAC 变化会拒绝自动登录，防止劫持。
+        <div class="about-card">
+          <div class="about-head">
+            <img class="about-logo" src="appicon.png" alt="easynet">
+            <div class="about-name">easynet</div>
+            <span class="about-ver" onclick="checkUpdate(false)">v0.4.1.1</span>
+            <div class="about-sub">江西农业大学校园网自动认证客户端</div>
+          </div>
+
+          <div class="about-div"></div>
+
+          <div class="about-sec">
+            <span>应用更新</span>
+            <span class="pill" id="updatePill">未检查</span>
+          </div>
+          <div class="about-line">Windows · amd64</div>
+          <div class="about-line" id="updateState">点击下方按钮检查是否有新版本</div>
+          <div class="about-line" id="updateNums"></div>
+          <div class="about-btns">
+            <button class="btn primary" onclick="checkUpdate(false)">重新检查</button>
+            <button class="btn" onclick="openRelease()">查看更新说明</button>
+          </div>
+          <div class="msg" id="updateMsg"></div>
+
+          <div class="about-div"></div>
+
+          <div class="about-foot">
+            <a onclick="openRepo()">GitHub 仓库</a>
+            <a onclick="openRelease()">Release</a>
+            <span>MIT License</span>
+            <span>Wails (MIT) · Go</span>
+          </div>
         </div>
       </section>
     </main>
@@ -491,17 +613,39 @@ function winMin() { RT() && RT().WindowMinimise(); }
 function winMax() { RT() && RT().WindowToggleMaximise(); }
 function winClose() { RT() && RT().Quit(); }
 function openRepo() { RT() && RT().BrowserOpenURL("https://github.com/love486love/easynet"); }
+function openRelease() { RT() && RT().BrowserOpenURL("https://github.com/love486love/easynet/releases"); }
 
 /* ---------- 主题 ---------- */
 const THEME_KEY = 'easynet-theme';
 const WINDOW_BG = { dark: [20, 22, 26, 1], light: [246, 248, 250, 1] };
+let themeMode = 'auto';
+
+function resolveTheme(mode) {
+  if (mode === 'auto') {
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  }
+  return mode === 'light' ? 'light' : 'dark';
+}
+
+function updateThemeSeg() {
+  const seg = document.getElementById('themeSeg');
+  if (!seg) return;
+  seg.querySelectorAll('.seg-item').forEach(function (el) {
+    el.classList.toggle('on', el.dataset.mode === themeMode);
+  });
+}
 
 function applyTheme(mode) {
-  const m = mode === 'light' ? 'light' : 'dark';
+  themeMode = (mode === 'light' || mode === 'dark') ? mode : 'auto';
+  const m = resolveTheme(themeMode);
   document.body.dataset.theme = m;
-  document.getElementById('themeBtn').title = m === 'light' ? '切换到深色' : '切换到浅色';
-  document.getElementById('themeBtn').setAttribute('aria-checked', m === 'light' ? 'true' : 'false');
-  try { localStorage.setItem(THEME_KEY, m); } catch (e) { }
+  const btn = document.getElementById('themeBtn');
+  if (btn) {
+    btn.title = m === 'light' ? '切换到深色' : '切换到浅色';
+    btn.setAttribute('aria-checked', m === 'light' ? 'true' : 'false');
+  }
+  try { localStorage.setItem(THEME_KEY, themeMode); } catch (e) { }
+  updateThemeSeg();
   if (RT() && RT().WindowSetBackgroundColour) {
     const c = WINDOW_BG[m];
     RT().WindowSetBackgroundColour(c[0], c[1], c[2], c[3]);
@@ -515,8 +659,16 @@ function toggleTheme() {
 (function initTheme() {
   let saved = null;
   try { saved = localStorage.getItem(THEME_KEY); } catch (e) { }
-  const sysLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
-  applyTheme(saved || (sysLight ? 'light' : 'dark'));
+  if (saved !== 'light' && saved !== 'dark' && saved !== 'auto') saved = 'auto';
+  applyTheme(saved);
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) {
+      mq.addEventListener('change', function () {
+        if (themeMode === 'auto') applyTheme('auto');
+      });
+    }
+  }
 })();
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -533,6 +685,20 @@ function setMsg(text, ok) {
   const el = document.getElementById('msg');
   el.textContent = text;
   el.className = 'msg ' + (ok === true ? 'ok' : ok === false ? 'bad' : '');
+}
+
+let toastTimer = null;
+function toast(text, ok) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.className = 'toast show' + (ok === false ? ' bad' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.className = 'toast' + (ok === false ? ' bad' : ''); }, 2600);
 }
 
 function renderState(s) {
@@ -836,25 +1002,31 @@ async function loadWifiAuto() {
 async function toggleWifiAuto() {
   if (!App()) return;
   const sw = document.getElementById('wifiSwitch');
-  sw.style.pointerEvents = 'none';
+  const next = !sw.classList.contains('on');
+  sw.classList.toggle('on', next); // 先给视觉反馈，再等后端
   try {
-    const on = !sw.classList.contains('on');
-    const msg = await App().SetWifiAutoEnabled(on);
-    setMsg(msg, true);
+    const msg = await App().SetWifiAutoEnabled(next);
+    await loadWifiAuto();
+    toast(msg || (next ? '已开启自动连接' : '已关闭自动连接'), true);
   } catch (e) {
-    setMsg(String(e), false);
+    sw.classList.toggle('on', !next);
+    toast((e && e.message) ? e.message : String(e), false);
   }
-  sw.style.pointerEvents = '';
-  await refresh();
 }
 
 async function toggleAutostart() {
   if (!App()) return;
+  const sw = document.getElementById('autoSwitch');
+  const next = !sw.classList.contains('on');
+  sw.classList.toggle('on', next);
   try {
-    const s = await App().Autostart();
-    await App().SetAutostart(!s.enabled);
+    const msg = await App().SetAutostart(next);
     await loadAutostart();
-  } catch (e) { setMsg(String(e), false); }
+    toast(msg || (next ? '已开启开机自启' : '已关闭开机自启'), true);
+  } catch (e) {
+    sw.classList.toggle('on', !next);
+    toast((e && e.message) ? e.message : String(e), false);
+  }
 }
 
 let updateInfo = null;
@@ -863,10 +1035,18 @@ async function checkUpdate(silent) {
   if (!App()) return;
   const badge = document.getElementById('verBadge');
   const msg = document.getElementById('updateMsg');
-  if (!silent && msg) { msg.textContent = '正在检查…'; msg.className = 'msg'; }
+  const pill = document.getElementById('updatePill');
+  const st = document.getElementById('updateState');
+  const nums = document.getElementById('updateNums');
+
+  if (pill) { pill.textContent = '检查中'; pill.classList.remove('on'); }
+  if (st && !silent) st.textContent = '正在检查最新版本…';
+  if (msg) { msg.textContent = ''; msg.className = 'msg'; }
+
   try {
     const u = await App().CheckUpdate();
     updateInfo = u;
+
     if (badge) {
       if (u.has_update) {
         badge.classList.add('update');
@@ -877,23 +1057,21 @@ async function checkUpdate(silent) {
         badge.textContent = 'v' + u.current;
         badge.title = '已是最新版本';
       }
-      if (msg) { msg.textContent = ''; msg.className = 'msg'; }
     }
-    if (msg && !silent) {
-      if (u.has_update) {
-        msg.className = 'msg ok';
-        msg.textContent = '发现新版本 v' + u.latest + '（当前 v' + u.current + '）';
-        const a = document.createElement('span');
-        a.className = 'link';
-        a.textContent = '  去下载';
-        a.onclick = function () { RT() && RT().BrowserOpenURL(u.url); };
-        msg.appendChild(a);
-      } else {
-        msg.className = 'msg ok';
-        msg.textContent = '已是最新版本 v' + u.current;
-      }
+    if (pill) {
+      pill.textContent = u.has_update ? '有新版本' : '已是最新';
+      pill.classList.toggle('on', u.has_update);
+    }
+    if (st) st.textContent = u.has_update ? ('发现新版本 v' + u.latest) : ('当前已是最新版本 ' + u.current);
+    if (nums) nums.textContent = '当前 ' + u.current + '      最新 ' + u.latest;
+
+    if (msg && !silent && u.has_update) {
+      msg.className = 'msg ok';
+      msg.textContent = '新版本 v' + u.latest + ' 已发布，点击「查看更新说明」了解变化。';
     }
   } catch (e) {
+    if (pill) { pill.textContent = '检查失败'; pill.classList.remove('on'); }
+    if (st && !silent) st.textContent = '无法获取更新信息，请检查网络后重试';
     if (msg && !silent) {
       msg.className = 'msg bad';
       msg.textContent = (e && e.message) ? e.message : String(e);
@@ -928,9 +1106,10 @@ const TUTORIAL_STEPS = [
     text: '守护开关默认打开。开启后掉线会在几秒内自动重连，期间不需要打开界面。',
   },
   {
-    target: '#autoSwitch',
+    page: 'settings',
+    target: '#setAutostart',
     title: '第 3 步 · 开机自启',
-    text: '打开左下角「开机自启」，下次开机守护会自动运行，连上 Wi-Fi 就能用。',
+    text: '在「设置」页打开「开机自启」，下次开机守护会自动运行，连上 Wi-Fi 就能用。',
   },
   {
     title: '关闭窗口也没关系',
@@ -938,7 +1117,7 @@ const TUTORIAL_STEPS = [
   },
   {
     title: '设置完成',
-    text: '随时可以在「关于」页点「重新播放」再看一遍。祝你上网顺畅。',
+    text: '外观与后台开关都在「设置」页。想再看一遍引导，可以在设置页点「重新播放」。祝你上网顺畅。',
   },
 ];
 
