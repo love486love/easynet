@@ -55,7 +55,7 @@
     overflow: hidden;
   }
   .brand-name { font-size: 14px; font-weight: 700; letter-spacing: .08em; }
-  .brand-sub { font-size: 11px; color: var(--muted); margin-left: 2px; font-weight: 400; letter-spacing: 0; }
+  .brand-sub { font-size: 11px; color: var(--muted); margin-left: 10px; font-weight: 400; letter-spacing: 0; position: relative; top: 2px; }
   .win-controls { display: flex; height: 100%; align-items: center; --wails-draggable: no-drag; }
   .wc {
     width: 46px; height: 100%; border: 0; background: transparent; color: var(--muted);
@@ -395,7 +395,7 @@
           <div class="nw-bar"><i id="nwFill"></i></div>
           <div class="nw-times" id="nwEnd"></div>
         </div>
-        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.5</div>
+        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.5.1</div>
       </div>
     </aside>
 
@@ -581,7 +581,7 @@
           <div class="about-head">
             <img class="about-logo" src="appicon.png" alt="easynet">
             <div class="about-name">easynet</div>
-            <span class="about-ver" onclick="checkUpdate(false)">v0.4.5</span>
+            <span class="about-ver" onclick="checkUpdate(false)">v0.4.5.1</span>
             <div class="about-sub">江西农业大学校园网自动认证客户端</div>
           </div>
 
