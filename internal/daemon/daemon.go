@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/love486love/easynet/internal/config"
+	"github.com/love486love/easynet/internal/logx"
 	"github.com/love486love/easynet/internal/portal"
 	"github.com/love486love/easynet/internal/probe"
 )
@@ -230,11 +231,13 @@ func backoff(fails int, retry, max time.Duration) time.Duration {
 }
 
 func loginReason(res portal.Result, err error) string {
+	// 登录请求失败时，error 可能携带完整登录网址（query 含明文密码），
+	// 进日志前统一脱敏，凭据不得出现在任何输出中。
 	if err != nil {
-		return err.Error()
+		return logx.MaskURL(err.Error())
 	}
 	if res.Message != "" {
-		return res.Message
+		return logx.MaskURL(res.Message)
 	}
 	return "未知原因"
 }

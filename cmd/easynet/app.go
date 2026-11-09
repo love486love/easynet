@@ -189,12 +189,14 @@ func (a *App) Login() (string, error) {
 	client := drcom.NewWithSuffixes(a.prof.Login.CarrierSuffixes)
 	res, err := client.Login(ctx, ep, cred)
 	if err != nil {
-		a.logger().Warn("手动认证失败", "门户", ep.Host, "err", err)
-		return "", err
+		// 登录网络错误可能携带完整登录网址（query 含明文密码），日志与界面提示前脱敏。
+		masked := logx.MaskURL(err.Error())
+		a.logger().Warn("手动认证失败", "门户", ep.Host, "err", masked)
+		return "", fmt.Errorf("%s", masked)
 	}
 	if !res.OK {
 		a.logger().Warn("手动认证被网关拒绝", "门户", ep.Host, "code", res.Code, "消息", logx.MaskURL(res.Message))
-		return "认证被拒: " + res.Message, nil
+		return "认证被拒: " + logx.MaskURL(res.Message), nil
 	}
 
 	a.logger().Info("手动认证成功", "门户", ep.Host, "账号", logx.MaskAccount(cred.Username))
