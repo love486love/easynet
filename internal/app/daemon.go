@@ -98,6 +98,15 @@ func RunDaemon(profilePath string) error {
 			logger.Warn("网关参数告警", "detail", w)
 		}
 
+		// 探针不可用（例如开机时 DNS 尚未就绪）拿不到 302 参数，
+		// 用本机网卡信息补齐，避免登录请求带空 userip 被网关拒绝。
+		if ep.Extra["userip"] == "" {
+			ep.Extra["userip"] = ni.IPv4
+		}
+		if ep.Extra["usermac"] == "" {
+			ep.Extra["usermac"] = ni.MAC
+		}
+
 		// 四项校验：SSID / 门户白名单 / 随机 MAC（仅告警）/ 网关 MAC 信任。
 		// 信任列表为空时只记录不阻断，避免首次使用被卡死。
 		if _, gerr := guard.Check(guard.Input{

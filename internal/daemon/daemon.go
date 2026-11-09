@@ -30,6 +30,10 @@ const (
 	rateWindow     = 10 * time.Minute
 	verifyRetries  = 2
 	verifyInterval = 500 * time.Millisecond
+	// unknownLoginAfter 是连续探针不可用多少次后允许一次试探登录。
+	// 开机时 DHCP/DNS 往往还没就绪，探针会一直报错而登录本身走裸 IP，
+	// 不依赖 DNS，因此不能一直停在"无法判定"上。
+	unknownLoginAfter = 6
 )
 
 // Run 阻塞运行守护循环，直到 ctx 取消。
@@ -51,6 +55,7 @@ func Run(ctx context.Context, d Deps) error {
 	var attempts []time.Time
 	var lastLoginAt time.Time
 	consecutiveFails := 0
+	unknownStreak := 0
 	wasOnline := false
 
 	for {
@@ -74,17 +79,24 @@ func Run(ctx context.Context, d Deps) error {
 			}
 			wasOnline = true
 			consecutiveFails = 0
+			unknownStreak = 0
 			if err := d.Sleep(ctx, onlineEvery); err != nil {
 				return nil
 			}
 			continue
 
 		case portal.StateUnknown:
-			// 探针不可用：不当作掉线，避免盲目重登。
-			if err := d.Sleep(ctx, onlineEvery); err != nil {
-				return nil
+			// 探针不可用先按原样等待；持续不可用则视为"很可能没认证"，
+			// 尝试登录一次。登录请求走门户裸 IP，不依赖 DNS 解析。
+			unknownStreak++
+			if unknownStreak < unknownLoginAfter {
+				if err := d.Sleep(ctx, onlineEvery); err != nil {
+					return nil
+				}
+				continue
 			}
-			continue
+			unknownStreak = 0
+			d.Log.Warn("探针持续不可用，尝试直接登录", "连续次数", unknownLoginAfter)
 		}
 
 		// 以下按未认证处理。
