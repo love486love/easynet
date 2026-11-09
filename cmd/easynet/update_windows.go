@@ -5,6 +5,7 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,7 +33,7 @@ func installedMode() bool {
 }
 
 // applyInstaller 适用于安装版：下载新版安装包、校验后静默运行。
-func applyInstaller(info UpdateInfo, emit progressEmitter) (string, error) {
+func applyInstaller(log *slog.Logger, info UpdateInfo, emit progressEmitter) (string, error) {
 	if info.setup.API == "" {
 		return "", fmt.Errorf("安装版更新需要新版安装包，请到 Release 页面手动下载")
 	}
@@ -41,7 +42,7 @@ func applyInstaller(info UpdateInfo, emit progressEmitter) (string, error) {
 	}
 	stopDaemonForUpdate()
 
-	sumData, err := downloadAsset(info.sum, nil)
+	sumData, err := downloadAsset(log, info.sum, nil)
 	if err != nil {
 		return "", fmt.Errorf("下载校验文件失败：%v", err)
 	}
@@ -49,27 +50,34 @@ func applyInstaller(info UpdateInfo, emit progressEmitter) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	log.Info("已获取校验值", "文件", info.setup.Name, "SHA256", want)
 
-	data, err := downloadAsset(info.setup, emit)
+	data, err := downloadAsset(log, info.setup, emit)
 	if err != nil {
+		log.Error("下载安装包失败", "err", err)
 		return "", fmt.Errorf("下载安装包失败：%v", err)
 	}
 
 	got := sha256.Sum256(data)
 	if !strings.EqualFold(fmt.Sprintf("%x", got), want) {
+		log.Error("安装包校验失败，已取消更新", "期望", want, "实际", fmt.Sprintf("%x", got))
 		return "", fmt.Errorf("安装包校验失败，已取消更新，当前版本未改动")
 	}
+	log.Info("安装包校验通过", "SHA256", want)
 
 	path := filepath.Join(os.TempDir(), "easynet-setup.exe")
 	if err := os.WriteFile(path, data, 0o755); err != nil {
+		log.Error("保存安装包失败", "err", err)
 		return "", fmt.Errorf("保存安装包失败：%v", err)
 	}
 
 	cmd := exec.Command(path, "/SILENT", "/CLOSEAPPLICATIONS", "/NORESTART")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("启动安装程序失败：%v", err)
+		log.Error("启动安装程序失败", "err", err)
+		return "", fmt.Errorf("启动安装程序失败: %v", err)
 	}
+	log.Info("安装程序已拉起，进程即将退出")
 	time.AfterFunc(300*time.Millisecond, func() { os.Exit(0) })
 	return "正在安装新版本，安装完成后会自动打开", nil
 }

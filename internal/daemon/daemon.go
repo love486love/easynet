@@ -56,6 +56,7 @@ func Run(ctx context.Context, d Deps) error {
 	var lastLoginAt time.Time
 	consecutiveFails := 0
 	unknownStreak := 0
+	probeFails := 0
 	wasOnline := false
 
 	for {
@@ -69,7 +70,12 @@ func Run(ctx context.Context, d Deps) error {
 
 		state, ev, perr := d.Probe(ctx)
 		if perr != nil {
-			d.Log.Warn("探针失败", "err", perr)
+			probeFails++
+			d.Log.Warn("探针失败", "连续次数", probeFails, "err", perr)
+		} else if probeFails > 0 {
+			// 从失败恢复成功也是一次状态变化，记下来才能还原完整时间线。
+			d.Log.Info("探针恢复", "此前连续失败", probeFails)
+			probeFails = 0
 		}
 
 		switch state {
@@ -89,6 +95,9 @@ func Run(ctx context.Context, d Deps) error {
 			// 探针不可用先按原样等待；持续不可用则视为"很可能没认证"，
 			// 尝试登录一次。登录请求走门户裸 IP，不依赖 DNS 解析。
 			unknownStreak++
+			if unknownStreak == 1 {
+				d.Log.Info("探针无法判定网络状态", "err", perr)
+			}
 			if unknownStreak < unknownLoginAfter {
 				if err := d.Sleep(ctx, onlineEvery); err != nil {
 					return nil
@@ -101,7 +110,7 @@ func Run(ctx context.Context, d Deps) error {
 
 		// 以下按未认证处理。
 		if wasOnline {
-			d.Log.Warn("检测到掉线")
+			d.Log.Warn("检测到掉线", "判定", state.String())
 			wasOnline = false
 			// 短存活：刚登录就掉，说明会话异常，直接进入长退避。
 			if !lastLoginAt.IsZero() && d.Now().Sub(lastLoginAt) < shortSession {
