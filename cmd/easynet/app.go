@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 	"github.com/love486love/easynet/internal/autostart"
 	"github.com/love486love/easynet/internal/config"
 	"github.com/love486love/easynet/internal/creds"
+	"github.com/love486love/easynet/internal/logx"
 	"github.com/love486love/easynet/internal/netinfo"
 	"github.com/love486love/easynet/internal/portal"
 	"github.com/love486love/easynet/internal/portal/drcom"
@@ -26,6 +29,10 @@ type App struct {
 	ctx  context.Context
 	prof config.Profile
 	dir  string
+	// log 是界面进程的日志器。界面与守护写同一个 easynet.log，
+	// 排查问题时才能在一个文件里看到完整过程（含检查更新、下载、替换）。
+	log      *slog.Logger
+	closeLog func() error
 }
 
 // Status 是状态接口的返回结构（字段名会原样序列化给前端）。
@@ -77,11 +84,36 @@ func NewApp() *App {
 	if p, loadErr := config.Load(filepath.Join(dir, "profile.json")); loadErr == nil {
 		prof = p
 	}
-	return &App{prof: prof, dir: dir}
+
+	// 界面进程也要写日志：更新检查、下载、替换这些动作只发生在界面进程，
+	// 不记下来的话出了问题（例如替换失败）日志里一点痕迹都没有。
+	// 日志不可写时退回黑洞，界面照常可用。
+	lg, closeLog, lerr := logx.New(config.LogDir())
+	if lerr != nil {
+		lg = slog.New(slog.NewTextHandler(io.Discard, nil))
+		closeLog = func() error { return nil }
+	}
+	return &App{prof: prof, dir: dir, log: lg, closeLog: closeLog}
+}
+
+// logger 返回日志器，调用方不必判空。
+func (a *App) logger() *slog.Logger {
+	if a == nil || a.log == nil {
+		return slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return a.log
+}
+
+// shutdown 在界面退出前关闭日志文件句柄。
+func (a *App) shutdown() {
+	if a != nil && a.closeLog != nil {
+		_ = a.closeLog()
+	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.logger().Info("界面启动", "版本", Version)
 	// 守护开关默认开启：界面就绪后自动补上，用户不必每次手动点一次。
 	go func() {
 		time.Sleep(1500 * time.Millisecond)
@@ -140,9 +172,11 @@ func (a *App) Login() (string, error) {
 	state, ev, err := session.ProbeOnce(ctx, a.prof)
 	if err != nil {
 		ni, _ := netinfo.Get()
+		a.logger().Warn("手动认证前探测失败", "err", err, "ssid", ni.SSID)
 		return "", fmt.Errorf("%s", networkHint(err, ni.SSID))
 	}
 	if state == portal.StateOnline {
+		a.logger().Info("手动认证", "结果", "已在线，跳过")
 		return "当前已在线，无需登录", nil
 	}
 
@@ -155,12 +189,15 @@ func (a *App) Login() (string, error) {
 	client := drcom.NewWithSuffixes(a.prof.Login.CarrierSuffixes)
 	res, err := client.Login(ctx, ep, cred)
 	if err != nil {
+		a.logger().Warn("手动认证失败", "门户", ep.Host, "err", err)
 		return "", err
 	}
 	if !res.OK {
+		a.logger().Warn("手动认证被网关拒绝", "门户", ep.Host, "code", res.Code, "消息", logx.MaskURL(res.Message))
 		return "认证被拒: " + res.Message, nil
 	}
 
+	a.logger().Info("手动认证成功", "门户", ep.Host, "账号", logx.MaskAccount(cred.Username))
 	msg := "认证成功"
 	if len(warns) > 0 {
 		msg += "（" + strings.Join(warns, "；") + "）"
@@ -195,6 +232,7 @@ func (a *App) SaveCred(username, password, carrier string) (string, error) {
 	if _, err := creds.SaveAccount(a.dir, creds.Secret{Username: username, Password: password, Carrier: carrier}); err != nil {
 		return "", err
 	}
+	a.logger().Info("保存账号", "账号", logx.MaskAccount(username), "运营商", carrier)
 	return "账号已保存（重启守护后生效）", nil
 }
 
@@ -250,8 +288,10 @@ func (a *App) Autostart() AutostartState {
 func (a *App) SetAutostart(enabled bool) (string, error) {
 	if !enabled {
 		if err := autostart.Disable(); err != nil {
+			a.logger().Warn("关闭开机自启失败", "err", err)
 			return "", err
 		}
+		a.logger().Info("已关闭开机自启")
 		return "已关闭开机自启", nil
 	}
 
@@ -260,8 +300,10 @@ func (a *App) SetAutostart(enabled bool) (string, error) {
 		return "", err
 	}
 	if err := autostart.Enable(exe, daemonArg); err != nil {
+		a.logger().Warn("开启开机自启失败", "err", err)
 		return "", err
 	}
+	a.logger().Info("已开启开机自启", "exe", exe)
 	return "已开启开机自启", nil
 }
 
@@ -381,9 +423,11 @@ func (a *App) StartDaemon() (string, error) {
 	for time.Now().Before(deadline) {
 		time.Sleep(250 * time.Millisecond)
 		if a.Daemon().Running {
+			a.logger().Info("守护已启动")
 			return "守护已启动", nil
 		}
 	}
+	a.logger().Warn("守护启动后未收到状态快照")
 	return "已启动，但尚未收到状态快照，请查看运行日志", nil
 }
 
@@ -399,9 +443,11 @@ func (a *App) StopDaemon() (string, error) {
 	for time.Now().Before(deadline) {
 		time.Sleep(300 * time.Millisecond)
 		if !a.Daemon().Running {
+			a.logger().Info("守护已停止")
 			return "守护已停止", nil
 		}
 	}
+	a.logger().Warn("已发送停止请求，守护未在超时前退出")
 	return "已发送停止请求，守护将在下一轮检查后退出", nil
 }
 

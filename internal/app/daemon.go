@@ -118,16 +118,23 @@ func RunDaemon(profilePath string) error {
 			TrustedMACs:  trusted,
 			RandomMAC:    ni.RandomMAC,
 		}); gerr != nil {
+			logger.Warn("安全校验未通过，放弃本次登录", "err", gerr)
 			return portal.Result{Code: 6, Message: gerr.Error()}, gerr
 		}
 
 		lastGatewayMAC = ni.GatewayMAC
+		logger.Info("发起登录", "门户", ep.Host, "账号", logx.MaskAccount(cred.Username),
+			"userip", ep.Extra["userip"], "ssid", ni.SSID)
 		client := drcom.NewWithSuffixes(prof.Login.CarrierSuffixes)
 		res, lerr := client.Login(ctx, ep, cred)
 		if lerr != nil {
 			lastMessage = "登录失败: " + lerr.Error()
+			logger.Warn("登录请求失败", "err", lerr)
 		} else if !res.OK {
 			lastMessage = "登录失败: " + res.Message
+			logger.Warn("网关拒绝登录", "code", res.Code, "消息", logx.MaskURL(res.Message))
+		} else {
+			logger.Info("网关返回登录成功", "code", res.Code)
 		}
 		if lerr != nil || !res.OK {
 			// 立即落盘，界面不必等下一轮探针就能看到失败原因。

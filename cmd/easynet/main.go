@@ -51,6 +51,7 @@ func runGUIMode() {
 	}
 
 	app := NewApp()
+	defer app.shutdown()
 
 	runErr := wails.Run(&options.App{
 		Title:            appWindowTitle,

@@ -8,7 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +30,11 @@ const (
 	// maxAttempts 是接口请求的最大尝试次数。校园网出口会偶发 504，
 	// 有限次重试后仍失败就直接报错，不会无限循环。
 	maxAttempts = 4
+	// swapAttempts 是替换新 exe 的整体重试次数，swapRenameRetries 是单步改名的重试次数。
+	// 杀毒软件常在 exe 落盘的瞬间扫描并短暂锁文件，改名会因此瞬间失败；
+	// 若不重试，selfupdate 会把旧文件改名后换不进新文件，目标位置直接空掉。
+	swapAttempts      = 3
+	swapRenameRetries = 4
 )
 
 // assetRef 记录一个 Release 资产的两个下载入口：
@@ -132,6 +141,7 @@ type UpdateInfo struct {
 
 // CheckUpdate 查询 GitHub 上的最新 Release，并与当前版本比较。
 func (a *App) CheckUpdate() (UpdateInfo, error) {
+	log := a.logger()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -140,6 +150,7 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 		"User-Agent": userAgent,
 	}, func(r *http.Response) bool { return r.StatusCode == http.StatusOK })
 	if err != nil {
+		log.Error("检查更新失败", "当前版本", Version, "err", err)
 		return UpdateInfo{}, fmt.Errorf("无法连接 GitHub，请稍后重试")
 	}
 	defer resp.Body.Close()
@@ -156,6 +167,7 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 		} `json:"assets"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		log.Error("检查更新失败", "err", err)
 		return UpdateInfo{}, fmt.Errorf("解析更新信息失败: %w", err)
 	}
 
@@ -178,12 +190,15 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 	}
 	info.HasUpdate = versionLess(info.Current, info.Latest)
 	info.CanAuto = (info.exe.API != "" && info.sum.API != "") || info.setup.API != ""
+	log.Info("检查更新", "当前版本", info.Current, "最新版本", info.Latest,
+		"发现新版本", info.HasUpdate, "可自动更新", info.CanAuto)
 	return info, nil
 }
 
 // ApplyUpdate 下载并安装最新版本。绿色版原地替换 exe，安装版运行新版安装包。
 // 成功后当前进程会退出，新版本自动启动。
 func (a *App) ApplyUpdate() (string, error) {
+	log := a.logger()
 	info, err := a.CheckUpdate()
 	if err != nil {
 		return "", err
@@ -192,56 +207,160 @@ func (a *App) ApplyUpdate() (string, error) {
 		return "已是最新版本", nil
 	}
 	if !info.CanAuto {
+		log.Warn("当前版本不支持自动更新", "目标版本", info.Latest)
 		return "", fmt.Errorf("当前发布缺少自动更新所需的文件，请到 Release 页面手动下载")
 	}
 
+	mode := "绿色版"
+	if installedMode() {
+		mode = "安装版"
+	}
+	log.Info("开始更新", "模式", mode, "当前版本", info.Current, "目标版本", info.Latest)
+
 	emit := a.updateEmitter()
 	if installedMode() {
-		return applyInstaller(info, emit)
+		return applyInstaller(log, info, emit)
 	}
 	return a.applyGreen(info, emit)
 }
 
 // applyGreen 适用于绿色版：下载裸 exe、校验、原地替换。
 func (a *App) applyGreen(info UpdateInfo, emit progressEmitter) (string, error) {
+	log := a.logger()
 	if info.exe.API == "" || info.sum.API == "" {
 		return "", fmt.Errorf("当前发布缺少 exe 或校验文件，请手动下载更新")
 	}
 	stopDaemonForUpdate()
 
-	sumData, err := downloadAsset(info.sum, nil)
+	sumData, err := downloadAsset(log, info.sum, nil)
 	if err != nil {
 		return "", fmt.Errorf("下载校验文件失败：%v", err)
 	}
 	want, err := parseChecksum(sumData, "easynet.exe")
 	if err != nil {
+		log.Error("解析校验文件失败", "err", err)
 		return "", err
 	}
+	log.Info("已获取校验值", "文件", "easynet.exe", "SHA256", want)
 
-	data, err := downloadAsset(info.exe, emit)
+	data, err := downloadAsset(log, info.exe, emit)
 	if err != nil {
+		log.Error("下载新版本失败", "err", err)
 		return "", fmt.Errorf("下载新版本失败：%v", err)
 	}
 
 	got := sha256.Sum256(data)
 	if !strings.EqualFold(fmt.Sprintf("%x", got), want) {
+		log.Error("下载文件校验失败，已取消更新", "期望", want, "实际", fmt.Sprintf("%x", got))
 		return "", fmt.Errorf("文件校验失败，已取消更新，当前版本未改动")
 	}
+	log.Info("校验通过", "SHA256", want)
 
-	if err := selfupdate.Apply(bytes.NewReader(data), selfupdate.Options{Checksum: got[:]}); err != nil {
-		if rerr := selfupdate.RollbackError(err); rerr != nil {
-			return "", fmt.Errorf("更新失败且自动回滚失败，请手动重新下载：%v", rerr)
-		}
-		return "", fmt.Errorf("更新失败，已保留旧版本：%v", err)
+	if err := a.commitGreen(data, got[:]); err != nil {
+		return "", err
 	}
-
+	log.Info("替换完成，准备重启到新版本")
 	launchAfterExit()
 	return "更新完成，正在重启…", nil
 }
 
+// commitGreen 把内存里的新 exe 换到目标位置。
+// 每次尝试前先自愈上次残留（旧文件在 .old、目标位置空着），失败则间隔 1 秒重试。
+// 这是因为安全软件常在 exe 落盘瞬间锁文件导致改名失败，而 selfupdate 一旦
+// 把旧文件改名、又换不进新文件，目标位置就会凭空消失，程序再也起不来。
+func (a *App) commitGreen(data, sum []byte) error {
+	log := a.logger()
+	target, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("获取程序路径失败: %v", err)
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= swapAttempts; attempt++ {
+		if attempt > 1 {
+			log.Warn("替换新版本失败，稍后重试", "第几次", attempt, "已重试", attempt-1, "err", lastErr)
+			time.Sleep(time.Second)
+		}
+		healUpdateState(log, target)
+		if err := selfupdate.Apply(bytes.NewReader(data), selfupdate.Options{
+			Checksum:   sum,
+			TargetPath: target,
+		}); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			log.Error("替换新版本失败", "第几次", attempt, "err", err, "目录状态", updateState(target))
+		}
+	}
+	// 重试用尽后再自愈一次，保证旧版本仍然可用，并把现场状态写进日志。
+	healUpdateState(log, target)
+	log.Error("替换新版本失败，重试已用尽", "重试次数", swapAttempts, "err", lastErr, "目录状态", updateState(target))
+	return fmt.Errorf("替换新版本失败（已重试 %d 次）：%v", swapAttempts, lastErr)
+}
+
+// updatePaths 返回与 target 同目录的新文件、备份文件路径（与 selfupdate 约定一致）。
+func updatePaths(target string) (neu, old string) {
+	dir, base := filepath.Dir(target), filepath.Base(target)
+	return filepath.Join(dir, "."+base+".new"), filepath.Join(dir, "."+base+".old")
+}
+
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// updateState 描述目标、新、旧三个文件的存在性，失败时写进日志便于事后定位。
+func updateState(target string) string {
+	neu, old := updatePaths(target)
+	return fmt.Sprintf("目标文件存在=%v 新文件存在=%v 旧备份存在=%v", fileExists(target), fileExists(neu), fileExists(old))
+}
+
+// healUpdateState 修复上一次替换失败留下的“目标文件缺失”状态：
+// 备份还在 .old，把它改回目标名，让程序至少能用旧版本正常启动。
+func healUpdateState(log *slog.Logger, target string) bool {
+	if fileExists(target) {
+		return false
+	}
+	_, old := updatePaths(target)
+	if !fileExists(old) {
+		return false
+	}
+	if log != nil {
+		log.Warn("检测到上次更新残留（目标文件缺失），恢复旧版本", "状态", updateState(target))
+	}
+	if err := renameWithRetry(old, target); err != nil {
+		if log != nil {
+			log.Error("恢复旧版本文件失败", "err", err, "来源", old, "目标", target)
+		}
+		return false
+	}
+	if log != nil {
+		log.Info("已恢复旧版本文件", "target", target)
+	}
+	return true
+}
+
+// renameWithRetry 改名带有限次重试：安全软件的扫描锁窗口通常只有几百毫秒。
+func renameWithRetry(from, to string) error {
+	var err error
+	for i := 0; i < swapRenameRetries; i++ {
+		if i > 0 {
+			time.Sleep(400 * time.Millisecond)
+		}
+		if err = os.Rename(from, to); err == nil {
+			return nil
+		}
+	}
+	return err
+}
+
 // downloadAsset 下载一个资产。先通过资产 API 换取带签名的真实地址，
 // 再按文件大小选择单连接或并发分块。
-func downloadAsset(ref assetRef, emit progressEmitter) ([]byte, error) {
+func downloadAsset(log *slog.Logger, ref assetRef, emit progressEmitter) ([]byte, error) {
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
@@ -249,22 +368,60 @@ func downloadAsset(ref assetRef, emit progressEmitter) ([]byte, error) {
 	if err != nil {
 		// API 不可用时退回直链；境外网络下直链通常更快。
 		if ref.Browser == "" {
+			if log != nil {
+				log.Error("获取下载地址失败", "文件", ref.Name, "err", err)
+			}
 			return nil, err
+		}
+		if log != nil {
+			log.Warn("API 下载地址不可用，改用直链", "文件", ref.Name, "err", err)
 		}
 		realURL = ref.Browser
 		ref.Size = 0
+	} else if log != nil {
+		log.Info("已获取下载地址", "文件", ref.Name, "host", urlHost(realURL))
 	}
 
 	rep := newProgressReporter(ref.Size, emit)
+	var data []byte
 	if ref.Size >= 1<<20 {
-		return downloadChunked(ctx, realURL, ref.Size, rep)
+		if log != nil {
+			log.Info("开始下载", "文件", ref.Name, "方式", "并发分块", "字节", ref.Size)
+		}
+		data, err = downloadChunked(ctx, realURL, ref.Size, rep)
+	} else {
+		if log != nil {
+			log.Info("开始下载", "文件", ref.Name, "方式", "单连接", "字节", ref.Size)
+		}
+		data, err = downloadSimple(ctx, realURL, rep)
+		if err == nil && ref.Size > 0 {
+			rep.finish()
+		}
 	}
 
-	data, err := downloadSimple(ctx, realURL, rep)
-	if err == nil && ref.Size > 0 {
-		rep.finish()
+	if log != nil {
+		if err != nil {
+			log.Error("下载失败", "文件", ref.Name, "耗时", time.Since(start).Round(time.Second).String(), "err", err)
+		} else {
+			elapsed := time.Since(start)
+			speed := int64(0)
+			if sec := elapsed.Seconds(); sec > 0 {
+				speed = int64(float64(len(data)) / 1024 / sec)
+			}
+			log.Info("下载完成", "文件", ref.Name, "字节", len(data),
+				"耗时", elapsed.Round(time.Second).String(), "平均速度", fmt.Sprintf("%d KB/s", speed))
+		}
 	}
 	return data, err
+}
+
+// urlHost 只取地址的 host 部分：签名地址的 query 里带临时凭据，不进日志。
+func urlHost(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Host
 }
 
 // resolveAsset 用资产 API 换取 302 的真实下载地址。
