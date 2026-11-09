@@ -128,10 +128,11 @@ func RunDaemon(profilePath string) error {
 		client := drcom.NewWithSuffixes(prof.Login.CarrierSuffixes)
 		res, lerr := client.Login(ctx, ep, cred)
 		if lerr != nil {
-			lastMessage = "登录失败: " + lerr.Error()
-			logger.Warn("登录请求失败", "err", lerr)
+			// 网络错误可能携带完整登录网址（query 含明文密码），落盘与日志前脱敏。
+			lastMessage = "登录失败: " + logx.MaskURL(lerr.Error())
+			logger.Warn("登录请求失败", "err", logx.MaskURL(lerr.Error()))
 		} else if !res.OK {
-			lastMessage = "登录失败: " + res.Message
+			lastMessage = "登录失败: " + logx.MaskURL(res.Message)
 			logger.Warn("网关拒绝登录", "code", res.Code, "消息", logx.MaskURL(res.Message))
 		} else {
 			logger.Info("网关返回登录成功", "code", res.Code)

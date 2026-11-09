@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -297,5 +298,26 @@ func TestAllowLoginWindow(t *testing.T) {
 	ok, kept := allowLogin(attempts, start.Add(12*time.Minute), 3)
 	if !ok || len(kept) != 0 {
 		t.Fatalf("超出窗口后应放行并清空历史，ok=%v kept=%d", ok, len(kept))
+	}
+}
+
+// 登录失败的网络错误会携带完整登录网址（query 含明文密码），
+// loginReason 是它进入日志的唯一通道，必须保证输出已脱敏。
+func TestLoginReasonMasksPassword(t *testing.T) {
+	err := errors.New(`Get "http://172.16.121.9:801/eportal/portal/login?user_account=%2C0%2C2023001%40cmcc&user_password=TopSecret123&v=9": dial tcp: i/o timeout`)
+	got := loginReason(portal.Result{}, err)
+	if strings.Contains(got, "TopSecret123") {
+		t.Fatalf("登录原因泄漏明文密码: %s", got)
+	}
+	if !strings.Contains(got, "user_password=***") {
+		t.Fatalf("敏感参数应被打码，得到: %s", got)
+	}
+	if !strings.Contains(got, "i/o timeout") {
+		t.Fatalf("脱敏后仍应保留排障信息，得到: %s", got)
+	}
+
+	got = loginReason(portal.Result{Message: "失败?user_password=abc123&x=1"}, nil)
+	if strings.Contains(got, "abc123") {
+		t.Fatalf("门户消息未脱敏: %s", got)
 	}
 }
