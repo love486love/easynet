@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -214,6 +215,75 @@ func TestShortSessionTriggersLongBackoff(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("短存活应触发长退避，实际等待序列 %v", clock.sleeps)
+	}
+}
+
+func TestUnknownBelowThresholdDoesNotLogin(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	clock := &fakeClock{now: time.Unix(0, 0)}
+	logins := 0
+
+	probeFn := func(context.Context) (portal.State, probe.Evidence, error) {
+		// 保持 unknown 次数刚好不足阈值，验证不会提前开火。
+		if len(clock.sleeps) >= unknownLoginAfter-2 {
+			cancel()
+		}
+		return portal.StateUnknown, probe.Evidence{}, errors.New("lookup www.baidu.com: no such host")
+	}
+
+	_ = Run(ctx, Deps{
+		Policy: policy(),
+		Probe:  probeFn,
+		Login: func(context.Context, probe.Evidence) (portal.Result, error) {
+			logins++
+			return portal.Result{OK: true}, nil
+		},
+		Sleep: clock.Sleep,
+		Now:   clock.Now,
+		Log:   quietLogger(),
+	})
+
+	if logins != 0 {
+		t.Fatalf("探针不可用未达阈值时不应登录，实际 %d 次", logins)
+	}
+}
+
+func TestUnknownStreakTriggersTrialLogin(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	clock := &fakeClock{now: time.Unix(0, 0)}
+	logins := 0
+	probes := 0
+
+	probeFn := func(context.Context) (portal.State, probe.Evidence, error) {
+		probes++
+		if logins >= 1 {
+			cancel()
+		}
+		return portal.StateUnknown, probe.Evidence{}, errors.New("lookup www.baidu.com: no such host")
+	}
+
+	_ = Run(ctx, Deps{
+		Policy: policy(),
+		Probe:  probeFn,
+		Login: func(context.Context, probe.Evidence) (portal.Result, error) {
+			logins++
+			return portal.Result{OK: true, Message: "Portal协议认证成功！"}, nil
+		},
+		Sleep: clock.Sleep,
+		Now:   clock.Now,
+		Log:   quietLogger(),
+	})
+
+	if logins != 1 {
+		t.Fatalf("探针持续不可用时应尝试登录 1 次，实际 %d 次（探测 %d 次）", logins, probes)
+	}
+	if len(clock.sleeps) < unknownLoginAfter-1 {
+		t.Fatalf("应等待约 %d 轮后再登录，实际等待序列 %v", unknownLoginAfter-1, clock.sleeps)
+	}
+	for _, d := range clock.sleeps[:unknownLoginAfter-1] {
+		if d != 5*time.Second {
+			t.Fatalf("等待期间应按在线间隔轮询（5s），实际 %v", clock.sleeps[:unknownLoginAfter-1])
+		}
 	}
 }
 
