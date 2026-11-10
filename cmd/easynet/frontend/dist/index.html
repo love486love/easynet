@@ -58,7 +58,7 @@
           <div class="nw-bar"><i id="nwFill"></i></div>
           <div class="nw-times" id="nwEnd"></div>
         </div>
-        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.6.3</div>
+        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.7</div>
       </div>
     </aside>
 
@@ -103,6 +103,24 @@
           <div class="card"><div class="label">网关 MAC（TOFU）</div><div class="value mono" id="gwmac">—</div></div>
           <div class="card"><div class="label">本机 MAC</div><div class="value mono" id="mac">—</div></div>
           <div class="card"><div class="label">凭据 / 信任</div><div class="value" id="cred">—</div></div>
+        </div>
+
+        <div class="rate-card">
+          <div class="rate-left">
+            <div class="label">实时网速</div>
+            <div class="rate-vals">
+              <div class="rate-item">
+                <div class="rate-num down"><span id="rateDown">—</span><span class="rate-unit" id="rateDownU"></span></div>
+                <div class="rate-dir">下行</div>
+              </div>
+              <div class="rate-item">
+                <div class="rate-num up"><span id="rateUp">—</span><span class="rate-unit" id="rateUpU"></span></div>
+                <div class="rate-dir">上行</div>
+              </div>
+            </div>
+            <div class="rate-stats" id="rateStats">采样中…</div>
+          </div>
+          <canvas class="rate-chart" id="rateChart" width="440" height="76" aria-label="最近 60 秒网速曲线"></canvas>
         </div>
         <div class="msg" id="msg"></div>
       </section>
@@ -244,7 +262,7 @@
           <div class="about-head">
             <img class="about-logo" src="appicon.png" alt="easynet">
             <div class="about-name">easynet</div>
-            <span class="about-ver" onclick="checkUpdate(false)">v0.4.6.3</span>
+            <span class="about-ver" onclick="checkUpdate(false)">v0.4.7</span>
             <div class="about-sub">江西农业大学校园网自动认证客户端</div>
           </div>
 

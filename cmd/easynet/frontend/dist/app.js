@@ -122,6 +122,116 @@ function goAccount() {
   document.querySelector('.nav-item[data-page="account"]').click();
 }
 
+// 实时网速：每秒取一次累计字节做差分（App.Counters → 默认路由网卡），
+// 大字显示瞬时速率，附本机累计/会话峰值，右侧画最近 60 秒历史曲线。
+let netPrev = null;
+const netHist = []; // 最近 60 个采样点 {d, u}（KB/s）
+const netPeak = { d: 0 };
+
+function fmtRate(bps) {
+  const k = bps / 1024;
+  if (k < 1024) return { v: k.toFixed(1), u: 'KB/s' };
+  return { v: (k / 1024).toFixed(2), u: 'MB/s' };
+}
+function fmtBytes(n) {
+  if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(0) + ' KB';
+  return Math.round(n) + ' B';
+}
+function setRateNum(id, r) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = r.v;
+  const unit = document.getElementById(id + 'U');
+  if (unit) unit.textContent = r.u;
+}
+async function loadNetRate() {
+  if (!App() || !App().Counters) return;
+  try {
+    const c = await App().Counters();
+    const now = Date.now();
+    let d = 0, u = 0;
+    if (netPrev && now > netPrev.t) {
+      const dt = (now - netPrev.t) / 1000;
+      // 计数器回绕或网卡切换时差分取 0，不显示负值
+      d = c.in >= netPrev.in ? (c.in - netPrev.in) / dt : 0;
+      u = c.out >= netPrev.out ? (c.out - netPrev.out) / dt : 0;
+    }
+    netPrev = { in: c.in, out: c.out, t: now };
+    if (d > netPeak.d) netPeak.d = d;
+
+    setRateNum('rateDown', fmtRate(d));
+    setRateNum('rateUp', fmtRate(u));
+    const st = document.getElementById('rateStats');
+    if (st) {
+      st.textContent = '本机累计 ↓ ' + fmtBytes(c.in) + '  ↑ ' + fmtBytes(c.out) +
+        '   ｜   会话峰值 ↓ ' + fmtBytes(netPeak.d) + '/s';
+    }
+
+    netHist.push({ d: d / 1024, u: u / 1024 }); // 曲线用 KB/s
+    if (netHist.length > 60) netHist.shift();
+    drawRateChart();
+  } catch (e) { }
+}
+
+// drawRateChart 画最近 60 秒曲线：下行渐变面积 + 上行虚线，随主题取色。
+function drawRateChart() {
+  const cv = document.getElementById('rateChart');
+  if (!cv || !cv.getContext) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth || 440, h = cv.clientHeight || 76;
+  if (cv.width !== w * dpr || cv.height !== h * dpr) {
+    cv.width = w * dpr; cv.height = h * dpr;
+  }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+
+  const cs = getComputedStyle(document.documentElement);
+  const cDown = (cs.getPropertyValue('--accent') || '#0b7bff').trim();
+  const cUp = (cs.getPropertyValue('--accent2') || '#4dd0e1').trim();
+
+  const n = 60;
+  let max = 0.1;
+  for (const p of netHist) { if (p.d > max) max = p.d; if (p.u > max) max = p.u; }
+  max *= 1.25;
+  const x = i => (i / (n - 1)) * w;
+  const y = v => h - 3 - (v / max) * (h - 10);
+  const pad = n - netHist.length; // 未采样的历史留白（靠右对齐最新）
+
+  // 下行：折线 + 渐变填充
+  g.beginPath();
+  netHist.forEach((p, i) => {
+    const px = x(pad + i), py = y(p.d);
+    i ? g.lineTo(px, py) : g.moveTo(px, py);
+  });
+  if (netHist.length > 1) {
+    g.strokeStyle = cDown; g.lineWidth = 1.8; g.lineJoin = 'round'; g.stroke();
+    g.lineTo(x(n - 1), h); g.lineTo(x(pad), h); g.closePath();
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, rgba(cDown, 0.25)); grad.addColorStop(1, rgba(cDown, 0));
+    g.fillStyle = grad; g.fill();
+  }
+
+  // 上行：虚线
+  g.beginPath();
+  netHist.forEach((p, i) => {
+    const px = x(pad + i), py = y(p.u);
+    i ? g.lineTo(px, py) : g.moveTo(px, py);
+  });
+  if (netHist.length > 1) {
+    g.strokeStyle = cUp; g.lineWidth = 1.4;
+    g.setLineDash([3, 3]); g.stroke(); g.setLineDash([]);
+  }
+}
+function rgba(c, a) {
+  if (c[0] !== '#') return `rgba(11,123,255,${a})`;
+  let s = c.slice(1);
+  if (s.length === 3) s = s.split('').map(x => x + x).join('');
+  const r = parseInt(s.slice(0, 2), 16), gg = parseInt(s.slice(2, 4), 16), b = parseInt(s.slice(4, 6), 16);
+  return `rgba(${r},${gg},${b},${a})`;
+}
+
 async function loadDaemon() {
   if (!App()) return;
   try {
@@ -730,6 +840,7 @@ refresh();
 loadAutostart();
 setInterval(loadLogs, 5000);
 setInterval(loadDaemon, 5000);
+setInterval(loadNetRate, 1000);
 maybeStartTutorial();
 
 setTimeout(function () {
