@@ -293,13 +293,13 @@ func isLinkNotReady(err error) bool {
 	}
 	s := err.Error()
 	for _, k := range []string{
-		"unreachable network",   // 路由/链路未就绪（connectex）
-		"no such host",          // DNS 未就绪
-		"actively refused",      // 门户服务未起（Windows refused 文案）
-		"connection refused",    // 门户服务未起（Unix 文案）
-		"i/o timeout",           // 传输超时
-		"deadline exceeded",     // 请求超时未达
-		"Timeout exceeded",      // HTTP 客户端超时未回
+		"unreachable network", // 路由/链路未就绪（connectex）
+		"no such host",        // DNS 未就绪
+		"actively refused",    // 门户服务未起（Windows refused 文案）
+		"connection refused",  // 门户服务未起（Unix 文案）
+		"i/o timeout",         // 传输超时
+		"deadline exceeded",   // 请求超时未达
+		"Timeout exceeded",    // HTTP 客户端超时未回
 	} {
 		if strings.Contains(s, k) {
 			return true

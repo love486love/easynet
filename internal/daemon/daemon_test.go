@@ -303,9 +303,12 @@ func TestUnknownSSIDMatchedTrialsInThree(t *testing.T) {
 	}
 
 	_ = Run(ctx, Deps{
-		Policy:      policy(),
-		Probe:       probeFn,
-		Login:       func(context.Context, probe.Evidence) (portal.Result, error) { logins++; return portal.Result{OK: true}, nil },
+		Policy: policy(),
+		Probe:  probeFn,
+		Login: func(context.Context, probe.Evidence) (portal.Result, error) {
+			logins++
+			return portal.Result{OK: true}, nil
+		},
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
@@ -341,9 +344,12 @@ func TestUnknownSSIDMismatchWaits(t *testing.T) {
 	}
 
 	_ = Run(ctx, Deps{
-		Policy:      policy(),
-		Probe:       probeFn,
-		Login:       func(context.Context, probe.Evidence) (portal.Result, error) { logins++; return portal.Result{OK: true}, nil },
+		Policy: policy(),
+		Probe:  probeFn,
+		Login: func(context.Context, probe.Evidence) (portal.Result, error) {
+			logins++
+			return portal.Result{OK: true}, nil
+		},
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
@@ -371,9 +377,12 @@ func TestUnknownPortalUnreachableWaits(t *testing.T) {
 	}
 
 	_ = Run(ctx, Deps{
-		Policy:      policy(),
-		Probe:       probeFn,
-		Login:       func(context.Context, probe.Evidence) (portal.Result, error) { logins++; return portal.Result{OK: true}, nil },
+		Policy: policy(),
+		Probe:  probeFn,
+		Login: func(context.Context, probe.Evidence) (portal.Result, error) {
+			logins++
+			return portal.Result{OK: true}, nil
+		},
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
