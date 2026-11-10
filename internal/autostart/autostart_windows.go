@@ -8,6 +8,7 @@ package autostart
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 )
@@ -65,4 +66,43 @@ func Value() (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// parseRunValue 从 Run 值中取出 exe 路径（忽略参数），
+// 例如 `"C:\dir with space\easynet.exe" --daemon` → `C:\dir with space\easynet.exe`。
+// 未加引号时按第一个空格切分。
+func parseRunValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	if v[0] == '"' {
+		if i := strings.Index(v[1:], `"`); i >= 0 {
+			return v[1 : 1+i]
+		}
+	}
+	if i := strings.IndexByte(v, ' '); i >= 0 {
+		return v[:i]
+	}
+	return v
+}
+
+// Ensure 校验自启键是否指向当前 exe；已开启但指向别处时刷新为
+// exe + args。防止旧副本残留（绿色版与安装版混用、目录被移动）
+// 在开机时抢先启动老版本，把新版本挤掉。
+// 未开启自启时不动作（不替用户做决定）。返回是否刷新了注册表。
+func Ensure(exe string, args ...string) (bool, error) {
+	cur, err := Value()
+	if err != nil {
+		return false, err
+	}
+	cur = strings.TrimSpace(cur)
+	if cur == "" {
+		return false, nil // 用户未开启自启
+	}
+	target := parseRunValue(cur)
+	if target == "" || strings.EqualFold(filepath.Clean(target), filepath.Clean(exe)) {
+		return false, nil
+	}
+	return true, Enable(exe, args...)
 }

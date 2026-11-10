@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/love486love/easynet/internal/config"
@@ -221,6 +223,22 @@ func RunDaemon(profilePath string) error {
 		Login: loginFn,
 		Log:   logger,
 		Stop:  func() bool { return state.StopRequested(dir) },
+		// SSID 判离线：已连目标校园网 3 次探不通即登录；连别的网络则等待。
+		TargetSSID:  prof.Network.SSID,
+		CurrentSSID: netinfo.SSID,
+		// 门户可达预检：开机链路未就绪时（日志里的
+		// "socket operation unreachable" 场景）先等 TCP 能连上门户再登录。
+		PortalReachable: func(ctx context.Context) bool {
+			addr := net.JoinHostPort(prof.Portal.Host, strconv.Itoa(prof.Portal.Port))
+			cctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+			defer cancel()
+			conn, err := (&net.Dialer{}).DialContext(cctx, "tcp", addr)
+			if err != nil {
+				return false
+			}
+			_ = conn.Close()
+			return true
+		},
 		OnVerified: func() {
 			if lastGatewayMAC == "" {
 				logger.Warn("网关 MAC 为空，跳过信任记录")

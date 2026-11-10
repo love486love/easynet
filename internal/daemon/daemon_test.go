@@ -288,6 +288,168 @@ func TestUnknownStreakTriggersTrialLogin(t *testing.T) {
 	}
 }
 
+// 已连上目标校园网（SSID 匹配）时，探针连续 3 次不可用即可判定离线，
+// 不必等满 6 次兜底。
+func TestUnknownSSIDMatchedTrialsInThree(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	clock := &fakeClock{now: time.Unix(0, 0)}
+	logins := 0
+
+	probeFn := func(context.Context) (portal.State, probe.Evidence, error) {
+		if logins >= 1 {
+			cancel()
+		}
+		return portal.StateUnknown, probe.Evidence{}, errors.New("lookup www.baidu.com: no such host")
+	}
+
+	_ = Run(ctx, Deps{
+		Policy:      policy(),
+		Probe:       probeFn,
+		Login:       func(context.Context, probe.Evidence) (portal.Result, error) { logins++; return portal.Result{OK: true}, nil },
+		Sleep:       clock.Sleep,
+		Now:         clock.Now,
+		Log:         quietLogger(),
+		TargetSSID:  "JXAU-Stu",
+		CurrentSSID: func() string { return "JXAU-Stu" },
+	})
+
+	if logins != 1 {
+		t.Fatalf("SSID 匹配时应登录 1 次，实际 %d", logins)
+	}
+	if len(clock.sleeps) < ssidLoginAfter-1 {
+		t.Fatalf("SSID 匹配应 %d 次探不通即登录，实际只等到 %d 轮", ssidLoginAfter, len(clock.sleeps))
+	}
+	for _, d := range clock.sleeps[:ssidLoginAfter-1] {
+		if d != 5*time.Second {
+			t.Fatalf("判定期间应按在线间隔轮询（5s），实际 %v", clock.sleeps)
+		}
+	}
+}
+
+// 连接的不是目标校园网时不代持登录，等用户切回目标网络重新计数。
+func TestUnknownSSIDMismatchWaits(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	clock := &fakeClock{now: time.Unix(0, 0)}
+	logins := 0
+
+	probeFn := func(context.Context) (portal.State, probe.Evidence, error) {
+		// 远超两档阈值仍不应开火
+		if len(clock.sleeps) >= 12 {
+			cancel()
+		}
+		return portal.StateUnknown, probe.Evidence{}, errors.New("lookup www.baidu.com: no such host")
+	}
+
+	_ = Run(ctx, Deps{
+		Policy:      policy(),
+		Probe:       probeFn,
+		Login:       func(context.Context, probe.Evidence) (portal.Result, error) { logins++; return portal.Result{OK: true}, nil },
+		Sleep:       clock.Sleep,
+		Now:         clock.Now,
+		Log:         quietLogger(),
+		TargetSSID:  "JXAU-Stu",
+		CurrentSSID: func() string { return "OtherNet" },
+	})
+
+	if logins != 0 {
+		t.Fatalf("SSID 不匹配时不应登录，实际 %d 次", logins)
+	}
+}
+
+// 门户 TCP 走不通（开机链路未就绪）时即使阈值已满也继续等待，
+// 不发起注定失败的空参数盲登。
+func TestUnknownPortalUnreachableWaits(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	clock := &fakeClock{now: time.Unix(0, 0)}
+	logins := 0
+
+	probeFn := func(context.Context) (portal.State, probe.Evidence, error) {
+		if len(clock.sleeps) >= 12 {
+			cancel()
+		}
+		return portal.StateUnknown, probe.Evidence{}, errors.New("lookup www.baidu.com: no such host")
+	}
+
+	_ = Run(ctx, Deps{
+		Policy:      policy(),
+		Probe:       probeFn,
+		Login:       func(context.Context, probe.Evidence) (portal.Result, error) { logins++; return portal.Result{OK: true}, nil },
+		Sleep:       clock.Sleep,
+		Now:         clock.Now,
+		Log:         quietLogger(),
+		TargetSSID:  "JXAU-Stu",
+		CurrentSSID: func() string { return "JXAU-Stu" },
+		PortalReachable: func(context.Context) bool {
+			return false // 链路未就绪，门户连不上
+		},
+	})
+
+	if logins != 0 {
+		t.Fatalf("门户不可达时不应登录，实际 %d 次", logins)
+	}
+}
+
+// 链路未就绪类错误（请求没到网关）不消耗登录频率配额、不进认证退避：
+// 连续多次后仍可立即重试，不会像网关拒绝那样被 10 分钟 3 次限住。
+func TestLinkNotReadyDoesNotConsumeQuota(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	clock := &fakeClock{now: time.Unix(0, 0)}
+	logins := 0
+
+	probeFn := func(context.Context) (portal.State, probe.Evidence, error) {
+		if logins >= 5 || len(clock.sleeps) >= 20 {
+			cancel()
+		}
+		return portal.StateOffline, probe.Evidence{}, nil
+	}
+
+	_ = Run(ctx, Deps{
+		Policy: policy(),
+		Probe:  probeFn,
+		Login: func(context.Context, probe.Evidence) (portal.Result, error) {
+			logins++
+			return portal.Result{}, errors.New(`dial tcp 172.16.121.9:801: connectex: A socket operation was attempted to an unreachable network`)
+		},
+		Sleep: clock.Sleep,
+		Now:   clock.Now,
+		Log:   quietLogger(),
+	})
+
+	if logins < 5 {
+		t.Fatalf("链路错误不应触发频率限制，应可连续尝试，实际 %d 次（配额 3 次/10分钟）", logins)
+	}
+	for _, d := range clock.sleeps {
+		if d >= 45*time.Second {
+			t.Fatalf("链路错误不应进入认证退避，实际等待序列 %v", clock.sleeps)
+		}
+	}
+}
+
+func TestIsLinkNotReady(t *testing.T) {
+	cases := []struct {
+		msg  string
+		want bool
+	}{
+		{"dial tcp 172.16.121.9:801: connectex: A socket operation was attempted to an unreachable network", true},
+		{"lookup www.baidu.com: no such host", true},
+		{"dial tcp 172.16.121.9:801: connectex: No connection could be made because the target machine actively refused it", true},
+		{"net/http: request canceled (Client.Timeout exceeded)", true},
+		{`Get "http://x/": context deadline exceeded`, true},
+		{"HTTP 500: 服务器内部错误", false},
+		{"账号或密码错误", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		var err error
+		if c.msg != "" {
+			err = errors.New(c.msg)
+		}
+		if got := isLinkNotReady(err); got != c.want {
+			t.Errorf("isLinkNotReady(%q) = %v, want %v", c.msg, got, c.want)
+		}
+	}
+}
+
 func TestAllowLoginWindow(t *testing.T) {
 	start := time.Unix(0, 0)
 	attempts := []time.Time{start, start.Add(time.Minute), start.Add(2 * time.Minute)}

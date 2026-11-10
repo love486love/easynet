@@ -94,6 +94,16 @@ func currentSSID() (string, error) {
 	return ParseSSID(string(out)), nil
 }
 
+// SSID 返回当前连接的 Wi-Fi SSID，未连接或查询失败时返回空字符串。
+// 轻量版：只做一次 netsh，供守护循环高频调用（Get 还会做 ARP/路由查询，太重）。
+func SSID() string {
+	s, err := currentSSID()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
 // ParseSSID 从 netsh 输出中提取 SSID。
 // 跳过 BSSID 行；键名 "SSID" 在中英文系统下均不变。
 func ParseSSID(out string) string {

@@ -116,6 +116,15 @@ func (a *App) startup(ctx context.Context) {
 	a.logger().Info("界面启动", "版本", Version)
 	// 守护开关默认开启：界面就绪后自动补上，用户不必每次手动点一次。
 	go func() {
+		// 自启键一致性：旧副本残留（绿色版与安装版混用、目录被移动）
+		// 会在开机时抢先启动老版本挤掉新版本，启动时把 Run 键刷回自己。
+		if self, err := os.Executable(); err == nil {
+			if changed, err := autostart.Ensure(self, daemonArg); err != nil {
+				a.logger().Warn("自启动路径校验失败", "err", err)
+			} else if changed {
+				a.logger().Info("自启动路径已刷新为当前程序", "exe", self)
+			}
+		}
 		time.Sleep(1500 * time.Millisecond)
 		_, _ = a.EnsureDaemon()
 	}()
@@ -157,6 +166,21 @@ func (a *App) Status() Status {
 		st.HasTrust = true
 	}
 	return st
+}
+
+// NetIO 是默认路由网卡的累计收发字节。
+type NetIO struct {
+	In  uint64 `json:"in"`
+	Out uint64 `json:"out"`
+}
+
+// Counters 返回默认路由网卡累计收发字节，前端按轮询差分计算实时网速。
+func (a *App) Counters() (NetIO, error) {
+	in, out, err := netinfo.Counters()
+	if err != nil {
+		return NetIO{}, err
+	}
+	return NetIO{In: in, Out: out}, nil
 }
 
 // Login 执行一次认证，返回可展示的结果文案。

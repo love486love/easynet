@@ -191,6 +191,36 @@
   .value { font-size: 13.5px; margin-top: 5px; word-break: break-all; }
   .value.mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
 
+  /* 实时网速特色卡：独立于信息小块的整行卡片 */
+  .rate-card {
+    margin-top: 12px;
+    background: var(--hero-bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 26px;
+    box-shadow: var(--shadow);
+  }
+  .rate-left { flex: 0 0 auto; }
+  .rate-vals { display: flex; gap: 26px; margin-top: 8px; }
+  .rate-item { display: flex; flex-direction: column; gap: 3px; }
+  .rate-num {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 27px; font-weight: 650; line-height: 1; letter-spacing: .3px;
+    white-space: nowrap;
+  }
+  .rate-num.down { color: var(--accent); }
+  .rate-num.up { color: var(--accent2); }
+  .rate-unit { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+  .rate-dir { font-size: 11px; color: var(--faint); }
+  .rate-stats {
+    margin-top: 10px; font-size: 11.5px; color: var(--muted);
+    font-family: Consolas, "Cascadia Mono", monospace;
+  }
+  .rate-chart { flex: 1; min-width: 0; height: 76px; display: block; }
+
   /* ---------- 账号 ---------- */
   .acc-bar { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; max-width: 760px; }
   .acc-select { position: relative; width: 380px; max-width: 100%; user-select: none; }
