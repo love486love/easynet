@@ -77,6 +77,12 @@ const openProfileTemplate = `<?xml version="1.0"?>
 </WLANProfile>`
 
 func addProfile(ssid string) error {
+	// 幂等：系统里已有该 profile（例如用户手动连过/保存过）时直接成功，
+	// 否则 netsh 报「配置文件已存在」会中断重连流程、跳过后续 connect 尝试。
+	if out, _ := runNetsh("wlan", "show", "profile", "name="+ssid); strings.Contains(out, ssid) {
+		return nil
+	}
+
 	dir := filepath.Join(os.TempDir(), "easynet")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

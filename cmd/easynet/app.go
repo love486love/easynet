@@ -18,6 +18,7 @@ import (
 	"github.com/love486love/easynet/internal/netinfo"
 	"github.com/love486love/easynet/internal/portal"
 	"github.com/love486love/easynet/internal/portal/drcom"
+	"github.com/love486love/easynet/internal/portal/ruijie"
 	"github.com/love486love/easynet/internal/session"
 	"github.com/love486love/easynet/internal/state"
 	"github.com/love486love/easynet/internal/trust"
@@ -68,7 +69,17 @@ type DaemonInfo struct {
 type AccountInfo struct {
 	Username string `json:"username"`
 	Carrier  string `json:"carrier"`
+	Campus   string `json:"campus"`
 	Current  bool   `json:"current"`
+}
+
+// CampusInfo 是概览页校区滑条的状态。
+type CampusInfo struct {
+	// Prefer 是滑条记忆的优先校区（自动连回 Wi-Fi 的目标）。
+	Prefer string `json:"prefer"`
+	// Connected 是当前连上的校区（dongqu/benbu），未连校园网为空。
+	Connected string `json:"connected"`
+	SSID      string `json:"ssid"`
 }
 
 // NewApp 读取 profile 与用户目录。凭据缺失不视为错误，界面里再引导填写。
@@ -183,10 +194,74 @@ func (a *App) Counters() (NetIO, error) {
 	return NetIO{In: in, Out: out}, nil
 }
 
+// Campus 返回概览页校区滑条的状态：优先校区（滑条记忆）+ 当前实际连接的校区。
+// 实际连接优先展示——门户由网络决定，滑条显示的必须是真实情况。
+func (a *App) Campus() CampusInfo {
+	info := CampusInfo{Prefer: a.prof.Network.PreferCampus}
+	if info.Prefer == "" {
+		info.Prefer = config.CampusDongqu
+	}
+	if ni, err := netinfo.Get(); err == nil {
+		info.SSID = ni.SSID
+		if strings.EqualFold(ni.SSID, a.prof.Network.SSID) {
+			info.Connected = config.CampusDongqu
+		}
+		for _, s := range a.prof.Network.ExtraSSIDs {
+			if strings.EqualFold(ni.SSID, s) {
+				info.Connected = config.CampusBenbu
+			}
+		}
+	}
+	return info
+}
+
+// SetCampus 设定优先校区并立即请求连接该校区 Wi-Fi。
+// 登录仍由守护按探测指纹自动完成（连上哪个校区就连哪个门户）。
+func (a *App) SetCampus(campus string) (string, error) {
+	if campus != config.CampusDongqu && campus != config.CampusBenbu {
+		return "", fmt.Errorf("未知校区: %s", campus)
+	}
+	name := "东区"
+	if campus == config.CampusBenbu {
+		name = "本部"
+	}
+
+	// 已连该校区任一 SSID：只记录偏好，不重复请求连接。
+	ssids := a.prof.SSIDsForCampus(campus)
+	if ni, err := netinfo.Get(); err == nil {
+		for _, s := range ssids {
+			if strings.EqualFold(ni.SSID, s) {
+				a.prof.Network.PreferCampus = campus
+				if err := config.Save(filepath.Join(a.dir, "profile.json"), a.prof); err != nil {
+					return "", fmt.Errorf("保存校区偏好失败: %w", err)
+				}
+				a.logger().Info("滑条切换", "校区", name, "当前已连接", ni.SSID)
+				return "当前已连接" + name + "校园网 " + ni.SSID, nil
+			}
+		}
+	}
+
+	// 按优先级逐个尝试（本部：JXAU 优先，不行再 CMCC-JXAU）。
+	var lastErr error
+	for _, ssid := range ssids {
+		if err := netinfo.Connect(ssid); err != nil {
+			lastErr = err
+			continue
+		}
+		a.prof.Network.PreferCampus = campus
+		if err := config.Save(filepath.Join(a.dir, "profile.json"), a.prof); err != nil {
+			return "", fmt.Errorf("保存校区偏好失败: %w", err)
+		}
+		a.logger().Info("滑条切换", "校区", name, "请求连接", ssid)
+		return "已请求连接" + name + "校园网 " + ssid + "，守护将自动登录", nil
+	}
+	a.logger().Warn("切换校区连接失败", "校区", name, "ssid", strings.Join(ssids, ","), "err", lastErr)
+	return "", fmt.Errorf("连接 %s 失败: %w", strings.Join(ssids, "/"), lastErr)
+}
+
 // Login 执行一次认证，返回可展示的结果文案。
 func (a *App) Login() (string, error) {
-	secret, err := creds.Load(a.dir)
-	if err != nil {
+	if store, err := creds.LoadStore(a.dir); err != nil || len(store.Accounts) == 0 {
 		return "", fmt.Errorf("尚未保存凭据，请先填写账号密码并保存")
 	}
 
@@ -205,12 +280,42 @@ func (a *App) Login() (string, error) {
 	}
 
 	ep, warns := session.EndpointFromEvidence(a.prof, ev)
+
+	// 与守护一致：按门户指纹选协议与对应校区账号（东区/本部各用各的）。
+	useRuijie := strings.Contains(ep.Extra["indexpath"], "index.jsp")
+	if !useRuijie && ep.Extra["indexpath"] == "" {
+		// Location 缺失时按当前 SSID 兜底（本部 SSID = ExtraSSIDs）。
+		if ni, nerr := netinfo.Get(); nerr == nil {
+			for _, s := range a.prof.Network.ExtraSSIDs {
+				if strings.EqualFold(ni.SSID, s) {
+					useRuijie = true
+					break
+				}
+			}
+		}
+	}
+	campus := creds.CampusDongqu
+	if useRuijie {
+		campus = creds.CampusBenbu
+	}
+	secret, err := creds.LoadForCampus(a.dir, campus)
+	if err != nil {
+		return "", err
+	}
+
 	cred := portal.Credential{Username: secret.Username, Password: secret.Password, Carrier: secret.Carrier}
 	if cred.Carrier == "" {
 		cred.Carrier = a.prof.Login.Carrier
 	}
 
-	client := drcom.NewWithSuffixes(a.prof.Login.CarrierSuffixes)
+	var client portal.Portal
+	if useRuijie {
+		rj := ruijie.New()
+		rj.CaptchaDir = filepath.Join(a.dir, "captcha")
+		client = rj
+	} else {
+		client = drcom.NewWithSuffixes(a.prof.Login.CarrierSuffixes)
+	}
 	res, err := client.Login(ctx, ep, cred)
 	if err != nil {
 		// 登录网络错误可能携带完整登录网址（query 含明文密码），日志与界面提示前脱敏。
@@ -231,10 +336,14 @@ func (a *App) Login() (string, error) {
 	return msg, nil
 }
 
-// SaveCred 新增或更新账号（DPAPI 加密），并把它设为当前账号。
-func (a *App) SaveCred(username, password, carrier string) (string, error) {
+// SaveCred 新增或更新账号（DPAPI 加密），并把它设为所属校区的当前账号。
+// campus 为 dongqu/benbu，空值按东区处理。
+func (a *App) SaveCred(username, password, carrier, campus string) (string, error) {
 	if username == "" || password == "" {
 		return "", fmt.Errorf("账号和密码不能为空")
+	}
+	if campus != creds.CampusDongqu && campus != creds.CampusBenbu {
+		campus = creds.CampusDongqu
 	}
 	if carrier == "" {
 		carrier = a.prof.Login.Carrier
@@ -243,8 +352,8 @@ func (a *App) SaveCred(username, password, carrier string) (string, error) {
 	store, loadErr := creds.LoadStore(a.dir)
 	if loadErr == nil {
 		for _, acc := range store.Accounts {
-			if acc.Username == username && acc.Password == password && acc.Carrier == carrier {
-				if store.Current != username {
+			if acc.Username == username && acc.Password == password && acc.Carrier == carrier && acc.CampusID() == campus {
+				if store.Currents[campus] != username {
 					if _, err := creds.SelectAccount(a.dir, username); err != nil {
 						return "", err
 					}
@@ -255,14 +364,17 @@ func (a *App) SaveCred(username, password, carrier string) (string, error) {
 		}
 	}
 
-	if _, err := creds.SaveAccount(a.dir, creds.Secret{Username: username, Password: password, Carrier: carrier}); err != nil {
+	if _, err := creds.SaveAccount(a.dir, creds.Secret{
+		Username: username, Password: password, Carrier: carrier, Campus: campus,
+	}); err != nil {
 		return "", err
 	}
-	a.logger().Info("保存账号", "账号", logx.MaskAccount(username), "运营商", carrier)
+	a.logger().Info("保存账号", "账号", logx.MaskAccount(username), "运营商", carrier, "校区", campus)
 	return "账号已保存（重启守护后生效）", nil
 }
 
 // Accounts 返回全部已保存账号；密码不会返回给前端。
+// Current 表示该账号是否为所属校区的当前使用账号。
 func (a *App) Accounts() []AccountInfo {
 	store, err := creds.LoadStore(a.dir)
 	if err != nil {
@@ -270,7 +382,12 @@ func (a *App) Accounts() []AccountInfo {
 	}
 	out := make([]AccountInfo, 0, len(store.Accounts))
 	for _, acc := range store.Accounts {
-		out = append(out, AccountInfo{Username: acc.Username, Carrier: acc.Carrier, Current: acc.Username == store.Current})
+		out = append(out, AccountInfo{
+			Username: acc.Username,
+			Carrier:  acc.Carrier,
+			Campus:   acc.CampusID(),
+			Current:  store.Currents[acc.CampusID()] == acc.Username,
+		})
 	}
 	return out
 }

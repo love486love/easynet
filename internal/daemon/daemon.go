@@ -26,10 +26,11 @@ type Deps struct {
 	Stop func() bool
 	// OnVerified 在"登录成功且探针复核在线"后调用，用于记录 TOFU 网关 MAC。
 	OnVerified func()
-	// TargetSSID 是 profile 中的目标校园网 SSID；CurrentSSID 返回当前
-	// 连接的 SSID（取不到返回空）。SSID 匹配是最快的离线信号：
-	// 已连上目标校园网却探不通，大概率是没认证，无需等满兜底次数。
-	TargetSSID  string
+	// TargetSSIDs 是 profile 中的目标校园网 SSID 列表（东区 JXAU-Stu +
+	// 本部 JXAU）；CurrentSSID 返回当前连接的 SSID（取不到返回空）。
+	// SSID 匹配是最快的离线信号：已连上任一目标校园网却探不通，
+	// 大概率是没认证，无需等满兜底次数。
+	TargetSSIDs []string
 	CurrentSSID func() string
 	// PortalReachable 在试探登录前探测门户可达（nil 视为可达）。
 	// 开机阶段 Wi-Fi 已关联但 DHCP/DNS 未就绪时门户走不通，
@@ -110,22 +111,22 @@ func Run(ctx context.Context, d Deps) error {
 			// 尝试登录一次。登录请求走门户裸 IP，不依赖 DNS 解析。
 			unknownStreak++
 			if unknownStreak == 1 {
-				d.Log.Info("探针无法判定网络状态", "err", perr)
+				d.Log.Info("探针无法判定网络状态", "http", ev.StatusCode, "err", perr)
 			}
 			// 判定阈值分三档：已连目标校园网 3 次即可判离线（SSID 是
 			// 最快信号）；连的是别的网络不代持登录，等切回来重新计数；
 			// SSID 取不到（未连 Wi-Fi/netsh 失败）保留 6 次兜底。
 			need := unknownLoginAfter
-			if d.CurrentSSID != nil && strings.TrimSpace(d.TargetSSID) != "" {
+			if d.CurrentSSID != nil && len(d.TargetSSIDs) > 0 {
 				switch cur := strings.TrimSpace(d.CurrentSSID()); {
 				case cur == "":
 					// 未连 Wi-Fi 或查询失败：走兜底阈值
-				case strings.EqualFold(cur, strings.TrimSpace(d.TargetSSID)):
+				case matchSSID(cur, d.TargetSSIDs):
 					need = ssidLoginAfter
 				default:
 					if unknownStreak == 1 {
 						d.Log.Info("当前 Wi-Fi 非目标校园网，暂不发起登录",
-							"当前SSID", cur, "目标SSID", d.TargetSSID)
+							"当前SSID", cur, "目标SSID", strings.Join(d.TargetSSIDs, ","))
 					}
 					unknownStreak = 0
 					if err := d.Sleep(ctx, onlineEvery); err != nil {
@@ -155,7 +156,7 @@ func Run(ctx context.Context, d Deps) error {
 
 		// 以下按未认证处理。
 		if wasOnline {
-			d.Log.Warn("检测到掉线", "判定", state.String())
+			d.Log.Warn("检测到掉线", "判定", state.String(), "http", ev.StatusCode)
 			wasOnline = false
 			// 短存活：刚登录就掉，说明会话异常，直接进入长退避。
 			if !lastLoginAt.IsZero() && d.Now().Sub(lastLoginAt) < shortSession {
@@ -325,4 +326,14 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// matchSSID 判断当前 SSID 是否属于任一目标校园网（忽略大小写与两端空白）。
+func matchSSID(cur string, targets []string) bool {
+	for _, t := range targets {
+		if strings.EqualFold(cur, strings.TrimSpace(t)) {
+			return true
+		}
+	}
+	return false
 }

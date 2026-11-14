@@ -264,6 +264,9 @@ async function toggleDaemon() {
 }
 
 const CARRIER_NAMES = { cmcc: '中国移动', ctcc: '中国电信', cucc: '中国联通', campus: '校园线路' };
+const CAMPUS_NAMES = { dongqu: '东区', benbu: '本部' };
+// 校区 → 目标 SSID（与 config.SSIDForCampus 保持一致）
+const CAMPUS_SSID = { dongqu: 'JXAU-Stu', benbu: 'JXAU' };
 function carrierName(c) { return CARRIER_NAMES[c] || c || '未指定线路'; }
 
 let accountsCache = [];
@@ -273,82 +276,72 @@ async function loadAccounts() {
   if (!App()) return;
   try {
     accountsCache = await App().Accounts();
-    if (!selectedUser || !accountsCache.some(a => a.username === selectedUser)) {
-      const cur = accountsCache.find(a => a.current);
-      selectedUser = accountsCache.length ? (cur || accountsCache[0]).username : '';
+    if (selectedUser && !accountsCache.some(a => a.username === selectedUser)) {
+      selectedUser = '';
     }
-    renderAccountSelect();
+    renderAccLists();
+    renderFoldCounts();
     renderEditor();
   } catch (e) { }
 }
 
-function renderAccountSelect() {
-  const userEl = document.getElementById('accCurrentUser');
-  const carrierEl = document.getElementById('accCurrentCarrier');
-  const menu = document.getElementById('accMenu');
-  const cur = accountsCache.find(a => a.username === selectedUser);
-  if (cur) {
-    userEl.textContent = cur.username;
-    carrierEl.textContent = carrierName(cur.carrier) + (cur.current ? ' · 当前使用' : '');
-  } else {
-    userEl.textContent = '还没有账号';
-    carrierEl.textContent = '点击右侧「新增账号」';
-  }
-
-  menu.innerHTML = '';
-  accountsCache.forEach(a => {
-    const row = document.createElement('div');
-    row.className = 'acc-option' + (a.username === selectedUser ? ' active' : '');
-    const main = document.createElement('div');
-    main.className = 'acc-option-main';
-    const u = document.createElement('div');
-    u.className = 'acc-option-user';
-    u.textContent = a.username;
-    const c = document.createElement('div');
-    c.className = 'acc-option-carrier';
-    c.textContent = carrierName(a.carrier) + (a.current ? ' · 当前使用' : '');
-    main.appendChild(u);
-    main.appendChild(c);
-    row.appendChild(main);
-    if (a.username === selectedUser) {
-      const check = document.createElement('span');
-      check.className = 'acc-option-check';
-      check.textContent = '✓';
-      row.appendChild(check);
+// 双列渲染：东区/本部各一个账号列表，行点击 = 载入编辑器 + 设为该校区使用中。
+function renderAccLists() {
+  ['dongqu', 'benbu'].forEach(campus => {
+    const box = document.getElementById('accList' + (campus === 'dongqu' ? 'Dongqu' : 'Benbu'));
+    if (!box) return;
+    box.innerHTML = '';
+    const list = accountsCache.filter(a => a.campus === campus);
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'acc-empty';
+      empty.textContent = '暂无' + CAMPUS_NAMES[campus] + '账号';
+      box.appendChild(empty);
+      return;
     }
-    row.onclick = () => { closeAccountMenu(); selectAccount(a.username); };
-    menu.appendChild(row);
+    list.forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'acc-row' + (a.username === selectedUser ? ' active' : '');
+      const main = document.createElement('div');
+      main.className = 'acc-row-main';
+      const u = document.createElement('div');
+      u.className = 'acc-row-user';
+      u.textContent = a.username;
+      const c = document.createElement('div');
+      c.className = 'acc-row-carrier';
+      c.textContent = carrierName(a.carrier) + (a.current ? ' · 使用中' : '');
+      main.appendChild(u);
+      main.appendChild(c);
+      row.appendChild(main);
+      if (a.current) {
+        const badge = document.createElement('span');
+        badge.className = 'acc-row-badge';
+        badge.textContent = '使用中';
+        row.appendChild(badge);
+      }
+      row.onclick = () => selectAccount(a.username);
+      box.appendChild(row);
+    });
   });
 }
-
-function toggleAccountMenu(ev) {
-  if (ev) ev.stopPropagation();
-  const menu = document.getElementById('accMenu');
-  const open = menu.hidden;
-  menu.hidden = !open;
-  document.getElementById('accSelect').classList.toggle('open', open);
-}
-
-function closeAccountMenu() {
-  document.getElementById('accMenu').hidden = true;
-  document.getElementById('accSelect').classList.remove('open');
-}
-
-document.addEventListener('click', closeAccountMenu);
 
 function renderEditor() {
   const a = accountsCache.find(x => x.username === selectedUser);
   const label = document.getElementById('editorLabel');
   const title = document.getElementById('editorTitle');
   const del = document.getElementById('delBtn');
+  const campusSel = document.getElementById('editorCampus');
   if (a) {
-    label.textContent = a.current ? '当前使用账号' : '已保存账号';
+    const cname = CAMPUS_NAMES[a.campus] || '东区';
+    label.textContent = cname + '账号' + (a.current ? ' · 使用中' : '');
     title.textContent = a.username + ' · ' + carrierName(a.carrier);
     del.style.display = 'inline-flex';
     document.getElementById('user').value = a.username;
     document.getElementById('carrier').value = a.carrier || 'cmcc';
+    campusSel.value = a.campus || 'dongqu';
   } else {
-    label.textContent = '新增账号';
+    if (!campusSel.value) campusSel.value = 'dongqu';
+    label.textContent = '新增' + (CAMPUS_NAMES[campusSel.value] || '东区') + '账号';
     title.textContent = '填写学号、密码与运营商';
     del.style.display = 'none';
     document.getElementById('user').value = '';
@@ -357,10 +350,17 @@ function renderEditor() {
   document.getElementById('pass').value = '';
 }
 
-function newAccount() {
+function newAccount(campus) {
   selectedUser = '';
+  document.getElementById('editorCampus').value = campus || 'dongqu';
   renderEditor();
   document.getElementById('user').focus();
+}
+
+// 校区下拉变更时只刷新标题，不动已填内容。
+function updateCampusLabel() {
+  const campus = document.getElementById('editorCampus').value || 'dongqu';
+  document.getElementById('editorLabel').textContent = '新增' + (CAMPUS_NAMES[campus] || '东区') + '账号';
 }
 
 async function selectAccount(username) {
@@ -394,6 +394,79 @@ async function deleteCurrent() {
   }
 }
 
+/* ---------- 校区切换（右上角两段式，点击滑动） ---------- */
+function markCampusSide(active) {
+  const seg = document.getElementById('campusSeg');
+  if (!seg) return;
+  seg.classList.toggle('at-benbu', active === 'benbu');
+  seg.querySelectorAll('.campus-seg-item').forEach(el => {
+    el.classList.toggle('on', el.dataset.c === active);
+  });
+}
+
+async function loadCampus() {
+  if (!App() || !App().Campus) return;
+  try {
+    const c = await App().Campus();
+    // 指示块优先跟随实际连接（门户由网络决定）；未连校园网时显示记忆的偏好。
+    const at = c.connected || c.prefer || 'dongqu';
+    markCampusSide(at);
+    const note = document.getElementById('campusNote');
+    if (note) {
+      if (c.connected) {
+        note.textContent = '已连接' + CAMPUS_NAMES[c.connected] + ' · ' + c.ssid;
+        note.className = 'campus-note ok';
+      } else if (c.ssid) {
+        note.textContent = '非校园网 ' + c.ssid + '，回连：' + CAMPUS_NAMES[c.prefer || 'dongqu'];
+        note.className = 'campus-note';
+      } else {
+        note.textContent = '未连 Wi-Fi，回连：' + CAMPUS_NAMES[c.prefer || 'dongqu'];
+        note.className = 'campus-note';
+      }
+    }
+    // 设置页「自动连接校园 Wi-Fi」文案跟随滑条所选校区。
+    const wd = document.getElementById('wifiDesc');
+    if (wd) {
+      const prefer = c.prefer || 'dongqu';
+      wd.textContent = '守护发现没连校园网时，自动连回' + CAMPUS_NAMES[prefer] +
+        '校园网 ' + (CAMPUS_SSID[prefer] || '') + '。';
+    }
+  } catch (e) { }
+}
+
+async function setCampus(campus) {
+  if (!App() || !App().SetCampus) return;
+  markCampusSide(campus); // 点击即滑动
+  try {
+    const msg = await App().SetCampus(campus);
+    setMsg(msg, true);
+  } catch (e) {
+    setMsg(String(e), false);
+  }
+  await loadCampus();
+}
+
+/* ---------- 账号折叠面板 ---------- */
+function toggleFold(campus) {
+  const el = document.getElementById(campus === 'dongqu' ? 'foldDongqu' : 'foldBenbu');
+  if (el) el.classList.toggle('open');
+}
+
+// 头部计数徽标：N 个 · 使用中
+function renderFoldCounts() {
+  const set = (id, campus) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const list = accountsCache.filter(a => a.campus === campus);
+    const cur = list.find(a => a.current);
+    el.textContent = list.length
+      ? (list.length + ' 个' + (cur ? ' · 使用中 ' + cur.username : ''))
+      : '未配置';
+  };
+  set('countDongqu', 'dongqu');
+  set('countBenbu', 'benbu');
+}
+
 async function refresh() {
   if (!App()) { setMsg('后端未就绪', false); return; }
   try { renderState(await App().Status()); }
@@ -402,6 +475,7 @@ async function refresh() {
   await loadDaemon();
   await loadAccounts();
   await loadWifiAuto();
+  await loadCampus();
 }
 
 function setLogMsg(text, ok) {
@@ -463,17 +537,21 @@ async function saveCred() {
   const username = document.getElementById('user').value.trim();
   const password = document.getElementById('pass').value;
   const carrier = document.getElementById('carrier').value;
+  const campus = document.getElementById('editorCampus').value || 'dongqu';
   if (!username || !password) {
     el.textContent = '账号和密码不能为空';
     el.className = 'msg bad';
     return;
   }
   try {
-    const msg = await App().SaveCred(username, password, carrier);
+    const msg = await App().SaveCred(username, password, carrier, campus);
     el.textContent = msg;
     el.className = 'msg ok';
     document.getElementById('pass').value = '';
     selectedUser = username;
+    // 确保目标校区面板展开，保存后能立刻看到新账号。
+    const fold = document.getElementById(campus === 'dongqu' ? 'foldDongqu' : 'foldBenbu');
+    if (fold) fold.classList.add('open');
     await refresh();
     // 守护开关默认开启：首次保存账号后自动把守护拉起来，不必再手动点一次。
     if (App().EnsureDaemon) {
@@ -717,25 +795,37 @@ function updateNetWindow() {
 const TUTORIAL_STEPS = [
   {
     title: '欢迎使用 easynet',
-    text: '连上校园 Wi-Fi 后自动完成认证，不用再打开门户输入账号密码。下面用 4 步带你完成设置。',
+    text: '连上校园 Wi-Fi 后自动完成认证，东区和本部校区都能自动登录。下面用 7 步带你完成设置。',
   },
   {
     page: 'account',
-    target: '.nav-item[data-page="account"]',
+    target: '.acc-fold',
     title: '第 1 步 · 保存账号',
-    text: '在「账号」页填写学号、密码和运营商线路。支持保存多个账号，随时切换当前使用的那一个。',
+    text: '「账号」页分东区、本部两个折叠面板。连哪个校区就用哪边的账号——东区账号填学号密码，本部账号也一样，各自独立保存（DPAPI 加密）。',
+  },
+  {
+    page: 'overview',
+    target: '.campus-mini-wrap',
+    title: '第 2 步 · 切换校区',
+    text: '右上角两段开关选择校区：点击「东区」或「本部」即自动连接对应校园网并登录。滑块会跟随当前实际连上的校区，不用时它只负责记住你的偏好。',
   },
   {
     page: 'overview',
     target: '.daemon-bar',
-    title: '第 2 步 · 打开守护',
-    text: '守护开关默认打开。开启后掉线会在几秒内自动重连，期间不需要打开界面。',
+    title: '第 3 步 · 打开守护',
+    text: '守护开关默认打开。开启后掉线会在几秒内自动重连，按探测到的门户自动选用东区或本部协议，期间不需要打开界面。',
+  },
+  {
+    page: 'overview',
+    target: '.rate-card',
+    title: '第 4 步 · 实时网速',
+    text: '概览页底部是实时网速卡：每秒刷新上下行速率，附带累计流量、会话峰值和最近 60 秒曲线，全部来自系统网卡计数器。',
   },
   {
     page: 'settings',
     target: '#setAutostart',
-    title: '第 3 步 · 开机自启',
-    text: '在「设置」页打开「开机自启」，下次开机守护会自动运行，连上 Wi-Fi 就能用。',
+    title: '第 5 步 · 开机自启',
+    text: '在「设置」页打开「开机自启」，下次开机守护会自动运行。旁边的「自动连接校园 Wi-Fi」会在没连校园网时按所选校区自动回连。',
   },
   {
     title: '关闭窗口也没关系',

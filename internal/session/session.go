@@ -3,8 +3,10 @@ package session
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/love486love/easynet/internal/config"
 	"github.com/love486love/easynet/internal/portal"
@@ -16,12 +18,14 @@ func ProbeOnce(ctx context.Context, prof config.Profile) (portal.State, probe.Ev
 	c := probe.New()
 
 	var firstOffline *probe.Evidence
-	var lastErr error
+	var errs []string
 
 	for _, p := range prof.Network.Probes {
 		state, ev, err := c.Check(ctx, p.URL, prof.Network.ProbeHosts, p.Expect)
 		if err != nil {
-			lastErr = err
+			// 所有探针的错误都要留痕：只留最后一个会掩盖
+			// 「校内探针好使、外网探针超时」这类关键排障信息。
+			errs = append(errs, p.URL+": "+err.Error())
 			continue
 		}
 		if state == portal.StateOnline {
@@ -36,8 +40,8 @@ func ProbeOnce(ctx context.Context, prof config.Profile) (portal.State, probe.Ev
 	if firstOffline != nil {
 		return portal.StateOffline, *firstOffline, nil
 	}
-	if lastErr != nil {
-		return portal.StateUnknown, probe.Evidence{}, lastErr
+	if len(errs) > 0 {
+		return portal.StateUnknown, probe.Evidence{}, errors.New(strings.Join(errs, "; "))
 	}
 	return portal.StateUnknown, probe.Evidence{}, nil
 }
@@ -67,16 +71,28 @@ func EndpointFromEvidence(prof config.Profile, ev probe.Evidence) (portal.Endpoi
 			if n, err := strconv.Atoi(ps); err == nil {
 				ep.Port = n
 			}
+		} else if ep.Host != prof.Portal.Host {
+			// 本部锐捷的重定向不带端口（http://10.255.240.8/eportal/...）：
+			// 门户换了主机就按 scheme 默认 80，沿用配置里的 801 会打错端口。
+			ep.Port = 80
 		}
+		// 本部锐捷登录要把 index.jsp 的完整 query 原样透传（双重编码），
+		// 东区 Dr.COM 的 userip/usermac/wlanacip 等参数同样取自这里。
+		ep.Extra["rawquery"] = u.RawQuery
+		ep.Extra["indexpath"] = u.EscapedPath()
 		q := u.Query()
 		ep.Extra["userip"] = q.Get("userip")
 		ep.Extra["usermac"] = q.Get("usermac")
 		ep.Extra["wlanacip"] = q.Get("wlanacip")
 	}
 
-	for _, k := range []string{"userip", "usermac", "wlanacip"} {
-		if ep.Extra[k] == "" {
-			warns = append(warns, k+" 为空，仍尝试登录")
+	// userip/usermac/wlanacip 是东区 Dr.COM 的参数命名；本部锐捷用
+	// wlanuserip/mac/nasip 且整串原样透传，为空属正常，不告警。
+	if !strings.Contains(ep.Extra["indexpath"], "index.jsp") {
+		for _, k := range []string{"userip", "usermac", "wlanacip"} {
+			if ep.Extra[k] == "" {
+				warns = append(warns, k+" 为空，仍尝试登录")
+			}
 		}
 	}
 	return ep, warns

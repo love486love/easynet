@@ -58,14 +58,27 @@
           <div class="nw-bar"><i id="nwFill"></i></div>
           <div class="nw-times" id="nwEnd"></div>
         </div>
-        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.4.7</div>
+        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.5.0</div>
       </div>
     </aside>
 
     <main class="content">
       <section class="page active" id="page-overview">
-        <h2 class="page-title">概览</h2>
-        <div class="page-sub">实时检测网络与认证状态</div>
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">概览</h2>
+            <div class="page-sub">实时检测网络与认证状态</div>
+          </div>
+          <!-- 校区切换：右上角紧凑两段式，点击即滑动切换 -->
+          <div class="campus-mini-wrap">
+            <div class="campus-seg" id="campusSeg" title="选择自动连接的校区（连哪个校区就用哪个门户与账号）">
+              <div class="campus-seg-slider" id="campusSegSlider"></div>
+              <div class="campus-seg-item" id="campusDongqu" data-c="dongqu" onclick="setCampus('dongqu')">东区</div>
+              <div class="campus-seg-item" id="campusBenbu" data-c="benbu" onclick="setCampus('benbu')">本部</div>
+            </div>
+            <div class="campus-note" id="campusNote">探测中…</div>
+          </div>
+        </div>
 
         <div class="cred-hint" id="credHint">
           <span>尚未保存校园网账号，守护无法自动认证</span>
@@ -127,20 +140,37 @@
 
       <section class="page" id="page-account">
         <h2 class="page-title">账号</h2>
-        <div class="page-sub">守护使用当前选中的账号自动认证；密码以 DPAPI 加密保存在本机</div>
 
-        <div class="acc-bar">
-          <div class="acc-select" id="accSelect">
-            <div class="acc-select-face" onclick="toggleAccountMenu(event)">
-              <div>
-                <div class="acc-select-user" id="accCurrentUser">还没有账号</div>
-                <div class="acc-select-carrier" id="accCurrentCarrier">点击选择或新增</div>
-              </div>
-              <svg class="acc-select-arrow" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg>
+        <!-- 东区 / 本部折叠面板：点头部展开/收起，列表在面板内滑动 -->
+        <div class="acc-fold">
+          <div class="acc-fold-item open" id="foldDongqu">
+            <div class="acc-fold-head" onclick="toggleFold('dongqu')">
+              <svg class="acc-fold-arrow" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg>
+              <span class="acc-col-title">东区账号</span>
+              <span class="acc-col-sub">连 JXAU-Stu 时使用</span>
+              <span class="acc-fold-count" id="countDongqu"></span>
             </div>
-            <div class="acc-menu" id="accMenu" hidden></div>
+            <div class="acc-fold-body">
+              <div class="acc-fold-inner">
+                <div class="acc-list" id="accListDongqu"></div>
+                <button class="btn ghost acc-add" onclick="event.stopPropagation();newAccount('dongqu')">+ 新增东区账号</button>
+              </div>
+            </div>
           </div>
-          <button class="btn ghost" onclick="newAccount()">+ 新增账号</button>
+          <div class="acc-fold-item" id="foldBenbu">
+            <div class="acc-fold-head" onclick="toggleFold('benbu')">
+              <svg class="acc-fold-arrow" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg>
+              <span class="acc-col-title">本部账号</span>
+              <span class="acc-col-sub">连 JXAU 时使用</span>
+              <span class="acc-fold-count" id="countBenbu"></span>
+            </div>
+            <div class="acc-fold-body">
+              <div class="acc-fold-inner">
+                <div class="acc-list" id="accListBenbu"></div>
+                <button class="btn ghost acc-add" onclick="event.stopPropagation();newAccount('benbu')">+ 新增本部账号</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="account-editor">
@@ -162,6 +192,13 @@
               <input id="pass" type="password" placeholder="校园网密码" autocomplete="off">
             </div>
             <div class="field">
+              <label>校区</label>
+              <select id="editorCampus" onchange="updateCampusLabel()">
+                <option value="dongqu">东区（JXAU-Stu）</option>
+                <option value="benbu">本部（JXAU）</option>
+              </select>
+            </div>
+            <div class="field">
               <label>运营商线路</label>
               <select id="carrier">
                 <option value="cmcc">中国移动</option>
@@ -178,7 +215,7 @@
         </div>
 
         <div class="hint">
-          守护使用「当前使用账号」自动认证；切换账号后守护会自动用新账号重启。账号文件位于 <code>%LOCALAPPDATA%\easynet\accounts.bin</code>，由 DPAPI 以当前用户身份加密。
+          守护按探测到的门户自动选用对应校区的账号；账号文件位于 <code>%LOCALAPPDATA%\easynet\accounts.bin</code>，由 DPAPI 以当前用户身份加密。旧版本保存的账号自动归入东区列表。
         </div>
       </section>
 
@@ -229,7 +266,7 @@
           </div>
           <div class="set-text">
             <div class="set-title">自动连接校园 Wi-Fi</div>
-            <div class="set-desc">守护发现没连校园网时，自动连回 JXAU-Stu。</div>
+            <div class="set-desc" id="wifiDesc">守护发现没连校园网时，自动连回所选校区的网络。</div>
           </div>
           <div class="switch" id="wifiSwitch" onclick="toggleWifiAuto()"></div>
         </div>
@@ -262,7 +299,7 @@
           <div class="about-head">
             <img class="about-logo" src="appicon.png" alt="easynet">
             <div class="about-name">easynet</div>
-            <span class="about-ver" onclick="checkUpdate(false)">v0.4.7</span>
+            <span class="about-ver" onclick="checkUpdate(false)">v0.5.0</span>
             <div class="about-sub">江西农业大学校园网自动认证客户端</div>
           </div>
 

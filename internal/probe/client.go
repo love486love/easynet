@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -71,7 +72,30 @@ func (c *Client) Check(ctx context.Context, probeURL string, allowedHosts []stri
 		ev.Body = append(ev.Body, rest[:m]...)
 	}
 
+	// 本部锐捷 AC 不用 302：未认证时对任意 HTTP 返回 200 + 511 字节
+	// JS 跳转页（top.self.location.href='http://...index.jsp?...'）。
+	// Location 头为空时从正文提取跳转地址，下游按同一语义消费
+	// （rawquery、门户指纹都从它解析）。
+	if ev.Location == "" {
+		if u := hijackRedirect(ev.Body); u != "" {
+			ev.Location = u
+		}
+	}
+
 	return Judge(probeURL, allowedHosts, expect, ev), ev, nil
+}
+
+// reJSJump 匹配劫持页里的绝对跳转地址（实测：单引号包裹的
+// http://10.255.240.8/eportal/index.jsp?wlanuserip=...&nasportid=...）。
+var reJSJump = regexp.MustCompile(`https?://[^'\s<>"]+index\.jsp\?[^'\s<>"]+`)
+
+// hijackRedirect 从疑似拦截页正文提取 JS 跳转地址；没有则返回空串。
+func hijackRedirect(body []byte) string {
+	// 只在小正文里找：真页面（几十 KB）不可能是劫持页。
+	if len(body) == 0 || len(body) > maxBody {
+		return ""
+	}
+	return string(reJSJump.Find(body))
 }
 
 func bytesContainsFold(haystack []byte, needle string) bool {
