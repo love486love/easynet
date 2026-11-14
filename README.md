@@ -1,12 +1,14 @@
 # easynet
 
-[![release](https://img.shields.io/github/v/release/love486love/easynet?label=release)](https://github.com/love486love/easynet/releases)
+[![release](https://img.shields.io/github/v/release/love486love/easynet?label=release&cacheSeconds=600)](https://github.com/love486love/easynet/releases)
 [![ci](https://github.com/love486love/easynet/actions/workflows/ci.yml/badge.svg)](https://github.com/love486love/easynet/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **江西农业大学（江农 / JXAU）校园网自动认证客户端**：面向 `JXAU-Stu`（东区）与 `JXAU`（本部）校园 Wi-Fi，Windows 10 / 11 x64。
 
 连上校园 Wi-Fi 后自动完成 ePortal 网页认证（东区 Dr.COM、本部锐捷自动识别），断线自动重连；关闭窗口后仍在后台工作，无需再打开浏览器输入账号密码。
+
+<p align="center"><img src="docs/images/overview.png" alt="easynet 概览页" width="760"></p>
 
 > 当前版本 **v0.5.2**。真机实测：会话过期后 **4.1 秒**恢复在线。
 
@@ -37,9 +39,7 @@
 
 1. 解压 / 安装后双击 `easynet.exe`
 2. 「账号」页填写学号、密码、运营商线路并保存
-3. 概览页的「守护」开关默认就是打开的；需要开机自动重连时，打开左下角「开机自启」
-4. 想让软件在没连校园网时自动连回来，打开左下角「自动连接 Wi-Fi」（默认关闭）
-5. 关闭窗口后守护仍在运行，托盘图标可查看状态、打开界面或退出
+3. 守护默认开启，关掉窗口也会在后台重连；需要开机自启或没连校园网时自动连回，打开左下角对应开关
 
 ## 系统要求
 
