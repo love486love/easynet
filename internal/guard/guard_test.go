@@ -7,12 +7,21 @@ import (
 
 func baseInput() Input {
 	return Input{
-		TargetSSID:   "JXAU-Stu",
+		TargetSSIDs:  []string{"JXAU-Stu", "JXAU"},
 		CurrentSSID:  "JXAU-Stu",
 		PortalHost:   "172.16.121.9",
-		AllowedHosts: []string{"172.16.121.9"},
+		AllowedHosts: []string{"172.16.121.9", "10.255.240.8"},
 		GatewayMAC:   "aa:bb:cc:dd:ee:ff",
 		TrustedMACs:  nil,
+	}
+}
+
+func TestCheckSecondCampusSSID(t *testing.T) {
+	in := baseInput()
+	in.CurrentSSID = "JXAU" // 本部校区
+	in.PortalHost = "10.255.240.8"
+	if _, err := Check(in); err != nil {
+		t.Fatalf("本部 SSID + 白名单门户应放行: %v", err)
 	}
 }
 
@@ -65,9 +74,15 @@ func TestCheckTrustedGateway(t *testing.T) {
 		t.Fatalf("MAC 大小写/分隔符应视为相等: %v", err)
 	}
 
+	// 跨校区场景：本部网关是新 MAC。门户已过白名单 → 放行 + 警告，
+	// 登录成功后记入信任（若阻断会形成"不登录就记不了"的死锁）。
 	in.GatewayMAC = "11:22:33:44:55:66"
-	if _, err := Check(in); !errors.Is(err, ErrUntrustedGateway) {
-		t.Fatalf("陌生网关应被拒绝，实际 %v", err)
+	res, err := Check(in)
+	if err != nil {
+		t.Fatalf("白名单内的门户遇新网关 MAC 应放行: %v", err)
+	}
+	if len(res.Warnings) == 0 {
+		t.Fatal("新网关 MAC 应给出告警")
 	}
 }
 
