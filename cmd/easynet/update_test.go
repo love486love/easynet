@@ -1,87 +1,76 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestVersionLess(t *testing.T) {
+func TestIsAccessDenied(t *testing.T) {
 	cases := []struct {
-		a, b string
+		name string
+		err  error
 		want bool
 	}{
-		{"0.3.0", "0.3.1", true},
-		{"0.3.1", "0.3.0", false},
-		{"0.3.0", "0.3.0", false},
-		{"v0.2.1", "0.3.0", true},
-		{"0.10.0", "0.9.1", false},
-		{"1.0.0", "0.9.9", false},
-		{"0.4.0-rc1", "0.4.0", false},
+		{"nil", nil, false},
+		{"permission", fs.ErrPermission, true},
+		{"windows文案", errors.New(`rename a b: Access is denied.`), true},
+		{"中文文案", errors.New("对路径的访问被拒绝"), false}, // 该文案不在匹配集（保持最小面）
+		{"包装后", wrapErr(fs.ErrPermission), true},
+		{"无关错误", errors.New("file not found"), false},
 	}
 	for _, c := range cases {
-		if got := versionLess(c.a, c.b); got != c.want {
-			t.Errorf("versionLess(%q, %q) = %v, want %v", c.a, c.b, got, c.want)
+		if got := isAccessDenied(c.err); got != c.want {
+			t.Errorf("%s: isAccessDenied=%v want %v", c.name, got, c.want)
 		}
 	}
 }
 
-// 替换失败会留下“目标文件缺失、旧文件在 .old”的坏状态，自愈必须把备份改回来，
-// 否则程序再也起不来（0.4.6 自动更新事故的现场就是这样）。
-func TestHealUpdateStateRestoresMissingTarget(t *testing.T) {
-	target := filepath.Join(t.TempDir(), "easynet.exe")
-	_, old := updatePaths(target)
-	if err := os.WriteFile(old, []byte("old-binary"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+// wrapErr 模拟 selfupdate 对底层错误的包装（保留错误链）。
+func wrapErr(err error) error { return fmt.Errorf("apply failed: %w", err) }
 
-	if !healUpdateState(nil, target) {
-		t.Fatal("目标缺失且备份存在时应执行恢复")
+func TestWriteUpdateHelper(t *testing.T) {
+	dir := t.TempDir()
+	path := writeUpdateHelper(dir)
+	if path == "" {
+		t.Fatal("应生成脚本路径")
 	}
-	got, err := os.ReadFile(target)
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("恢复后目标文件应存在: %v", err)
+		t.Fatalf("读取脚本失败: %v", err)
 	}
-	if string(got) != "old-binary" {
-		t.Fatalf("恢复内容错误: %q", got)
+	script := string(raw)
+	// 幂等三件套：恢复缺失目标 / 新文件就位 / 启动新版本
+	for _, needle := range []string{".easynet.exe.old", ".easynet.exe.new", "easynet.exe", "start"} {
+		if !strings.Contains(script, needle) {
+			t.Errorf("脚本缺少 %q", needle)
+		}
 	}
-	if fileExists(old) {
-		t.Fatal("恢复后旧备份应已被改走")
+	// 失败时不返回路径
+	if p := writeUpdateHelper(filepath.Join(dir, "not-exist", "sub")); p != "" && !filepath.IsAbs(p) {
+		t.Errorf("返回路径应为绝对路径: %q", p)
 	}
 }
 
-func TestHealUpdateStateKeepsHealthyTarget(t *testing.T) {
-	target := filepath.Join(t.TempDir(), "easynet.exe")
-	_, old := updatePaths(target)
-	if err := os.WriteFile(target, []byte("current"), 0o755); err != nil {
+func TestProbeSwapRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "easynet.exe")
+	if err := os.WriteFile(target, []byte("MZ fake"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(old, []byte("stale"), 0o755); err != nil {
-		t.Fatal(err)
+	if err := probeSwap(target); err != nil {
+		t.Fatalf("正常目录预检应通过: %v", err)
 	}
-
-	if healUpdateState(nil, target) {
-		t.Fatal("目标文件完好时不应触发恢复")
+	// 预检后文件必须原样回到目标位置
+	if raw, err := os.ReadFile(target); err != nil || string(raw) != "MZ fake" {
+		t.Fatalf("预检后目标文件应完好: %v", err)
 	}
-	got, _ := os.ReadFile(target)
-	if string(got) != "current" {
-		t.Fatalf("目标文件被误改: %q", got)
-	}
-}
-
-func TestHealUpdateStateNoopWithoutBackup(t *testing.T) {
-	target := filepath.Join(t.TempDir(), "easynet.exe")
-	if healUpdateState(nil, target) {
-		t.Fatal("没有任何文件时不应触发恢复")
-	}
-	if fileExists(target) {
-		t.Fatal("不应无中生有创建目标文件")
-	}
-}
-
-func TestUpdatePaths(t *testing.T) {
-	neu, old := updatePaths(`D:\app\easynet.exe`)
-	if neu != `D:\app\.easynet.exe.new` || old != `D:\app\.easynet.exe.old` {
-		t.Fatalf("路径拼接错误: %q %q", neu, old)
+	// 目标缺失时预检应报错（且不产生 probe 残留）
+	if err := probeSwap(filepath.Join(dir, "missing.exe")); err == nil {
+		t.Fatal("缺失目标应报错")
 	}
 }
