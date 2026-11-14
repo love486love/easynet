@@ -185,11 +185,51 @@
   .daemon-title { font-size: 13px; font-weight: 600; }
   .daemon-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
 
-  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px; }
-  .label { color: var(--muted); font-size: 11.5px; }
-  .value { font-size: 13.5px; margin-top: 5px; word-break: break-all; }
-  .value.mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
+  /* ---------- 概览信息卡 ---------- */
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .card {
+    position: relative;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px 16px 15px;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    overflow: hidden;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+    border-color: var(--line2);
+  }
+  /* 顶部渐变细线：整卡的点睛笔触 */
+  .card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    opacity: 0; transition: opacity .18s ease;
+  }
+  .card:hover::before { opacity: .85; }
+  .card-head { display: flex; align-items: center; gap: 9px; }
+  .card-ico {
+    width: 28px; height: 28px; border-radius: 9px; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--hover); color: var(--accent);
+  }
+  .card-ico.alt { color: var(--accent2); }
+  .card-ico.warn { color: var(--warn); }
+  .card-ico.ok { color: var(--ok); }
+  .card-ico svg { width: 15px; height: 15px; }
+  .label { color: var(--muted); font-size: 11.5px; letter-spacing: .02em; }
+  .value { font-size: 15px; font-weight: 600; margin-top: 10px; word-break: break-all; line-height: 1.35; }
+  .value.mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; font-weight: 550; letter-spacing: .03em; }
+  .value.accent { color: var(--accent); }
+  /* 凭据状态药丸 */
+  .pill {
+    display: inline-block; padding: 2.5px 10px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .02em;
+    background: var(--hover); color: var(--muted); margin-right: 6px;
+    border: 1px solid transparent;
+  }
+  .pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+  .pill.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); border-color: color-mix(in srgb, var(--bad) 30%, transparent); }
+  .value .pill { margin-top: 0; }
 
   /* 实时网速特色卡：独立于信息小块的整行卡片 */
   .rate-card {
