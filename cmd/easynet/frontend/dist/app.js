@@ -938,11 +938,13 @@ setTimeout(function () {
   const badge = document.getElementById('verBadge');
   const aboutVer = document.querySelector('.about-ver');
   if (App() && App().Version) {
-    try {
-      const v = 'v' + App().Version();
+    // Version() 是 Wails 异步绑定（返回 Promise），直接拼串会显示
+    // "v[object Promise]"——用 Promise.resolve 兼容同步与异步两种返回。
+    Promise.resolve(App().Version()).then(function (ver) {
+      const v = 'v' + ver;
       if (badge) badge.textContent = v;
       if (aboutVer) aboutVer.textContent = v;
-    } catch (e) { }
+    }).catch(function () { });
   }
   checkUpdate(true);
 }, 2500);
