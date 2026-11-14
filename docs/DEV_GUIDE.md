@@ -4,12 +4,14 @@
 
 ## 1. 开发环境（Windows）
 
+> 下文中的 `<工作区>` 指本机放置本仓库的目录。
+
 | 项 | 值 |
 |---|---|
-| Go | `d:\trae工作区\.tools\go\bin`（PATH 前置） |
-| Wails CLI | `d:\trae工作区\.tools\gopath\bin\wails.exe`（GOPATH 也指这里） |
-| GOTMPDIR | **必须** `$env:GOTMPDIR = "d:\trae工作区\.tmp"` |
-| GOCACHE | **必须** `$env:GOCACHE = "d:\trae工作区\.gocache"` |
+| Go | `<工作区>\.tools\go\bin`（PATH 前置） |
+| Wails CLI | `<工作区>\.tools\gopath\bin\wails.exe`（GOPATH 也指这里） |
+| GOTMPDIR | **必须** `$env:GOTMPDIR = "<工作区>\.tmp"` |
+| GOCACHE | **必须** `$env:GOCACHE = "<工作区>\.gocache"` |
 | GOPROXY | `https://goproxy.cn,direct`（校园网直连 proxy.golang.org 会超时） |
 
 > GOTMPDIR/GOCACHE 不设置会落在 C 盘 Temp，被 360 清除导致 `fork/exec: Access is denied`。
@@ -18,11 +20,11 @@
 
 ```powershell
 # 环境（每条命令前置）
-$env:PATH = "d:\trae工作区\.tools\gopath\bin;d:\trae工作区\.tools\go\bin;" + $env:PATH
-$env:GOTMPDIR = "d:\trae工作区\.tmp"; $env:GOCACHE = "d:\trae工作区\.gocache"
-$env:GOPATH = "d:\trae工作区\.tools\gopath"; $env:GOPROXY = "https://goproxy.cn,direct"
+$env:PATH = "<工作区>\.tools\gopath\bin;<工作区>\.tools\go\bin;" + $env:PATH
+$env:GOTMPDIR = "<工作区>\.tmp"; $env:GOCACHE = "<工作区>\.gocache"
+$env:GOPATH = "<工作区>\.tools\gopath"; $env:GOPROXY = "https://goproxy.cn,direct"
 
-cd d:\trae工作区\epo
+cd <工作区>\epo
 gofmt -l .                 # CI 会挡未格式化文件；-w 修复
 go vet ./...
 go test ./...              # 13 包，全绿才可提交
@@ -79,8 +81,8 @@ epo/
 
 ## 6. 真机测试工具
 
-- `d:\trae工作区\benbu-probe.bat`：本部拦截行为实测（DNS/302/劫持 body/门户探活），断网窗口本地可跑，报告写 `benbu-probe-report.txt`
-- `d:\trae工作区\benbu-probe2.bat`：劫持页 body 抓取 + 用测试账号完整 login 实测（凭据从 accounts.bin 读，不硬编码）
+- `<工作区>\benbu-probe.bat`：本部拦截行为实测（DNS/302/劫持 body/门户探活），断网窗口本地可跑，报告写 `benbu-probe-report.txt`
+- `<工作区>\benbu-probe2.bat`：劫持页 body 抓取 + 用测试账号完整 login 实测（凭据从 accounts.bin 读，不硬编码）
 - 验证码 fixture：`internal/portal/ruijie/testdata/validcode-{1..4}.png`（答案 9456/2284/0336/9348，测试里对齐）
 - E2E 判读：日志关键词 = `协议 ruijie-eportal` → `登录成功，进入在线态` → `已记录网关 MAC`
 
