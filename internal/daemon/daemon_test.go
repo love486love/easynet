@@ -312,7 +312,7 @@ func TestUnknownSSIDMatchedTrialsInThree(t *testing.T) {
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
-		TargetSSID:  "JXAU-Stu",
+		TargetSSIDs: []string{"JXAU-Stu"},
 		CurrentSSID: func() string { return "JXAU-Stu" },
 	})
 
@@ -326,6 +326,44 @@ func TestUnknownSSIDMatchedTrialsInThree(t *testing.T) {
 		if d != 5*time.Second {
 			t.Fatalf("判定期间应按在线间隔轮询（5s），实际 %v", clock.sleeps)
 		}
+	}
+}
+
+// 本部校区 SSID（JXAU，在目标列表第二项）同样触发 3 次判离线。
+func TestUnknownSSIDSecondCampusTrialsInThree(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	clock := &fakeClock{now: time.Unix(0, 0)}
+	logins := 0
+
+	probeFn := func(context.Context) (portal.State, probe.Evidence, error) {
+		if logins >= 1 {
+			cancel()
+		}
+		return portal.StateUnknown, probe.Evidence{}, errors.New("lookup www.baidu.com: no such host")
+	}
+
+	_ = Run(ctx, Deps{
+		Policy: policy(),
+		Probe:  probeFn,
+		Login: func(context.Context, probe.Evidence) (portal.Result, error) {
+			logins++
+			return portal.Result{OK: true}, nil
+		},
+		Sleep:       clock.Sleep,
+		Now:         clock.Now,
+		Log:         quietLogger(),
+		TargetSSIDs: []string{"JXAU-Stu", "JXAU"},
+		CurrentSSID: func() string { return "JXAU" },
+	})
+
+	if logins != 1 {
+		t.Fatalf("本部 SSID 在目标列表中应登录 1 次，实际 %d", logins)
+	}
+	// 走 SSID 快速路径（3 次判离线），而不是 6 次兜底：
+	// 判定期间的轮询次数应明显少于兜底阈值所需。
+	if len(clock.sleeps) >= unknownLoginAfter-1 {
+		t.Fatalf("应走 SSID 快速判离线路径，实际等了 %d 轮（兜底阈值 %d）",
+			len(clock.sleeps), unknownLoginAfter)
 	}
 }
 
@@ -353,7 +391,7 @@ func TestUnknownSSIDMismatchWaits(t *testing.T) {
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
-		TargetSSID:  "JXAU-Stu",
+		TargetSSIDs: []string{"JXAU-Stu"},
 		CurrentSSID: func() string { return "OtherNet" },
 	})
 
@@ -386,7 +424,7 @@ func TestUnknownPortalUnreachableWaits(t *testing.T) {
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
-		TargetSSID:  "JXAU-Stu",
+		TargetSSIDs: []string{"JXAU-Stu"},
 		CurrentSSID: func() string { return "JXAU-Stu" },
 		PortalReachable: func(context.Context) bool {
 			return false // 链路未就绪，门户连不上

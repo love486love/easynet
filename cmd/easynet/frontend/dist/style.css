@@ -221,35 +221,83 @@
   }
   .rate-chart { flex: 1; min-width: 0; height: 76px; display: block; }
 
-  /* ---------- 账号 ---------- */
-  .acc-bar { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; max-width: 760px; }
-  .acc-select { position: relative; width: 380px; max-width: 100%; user-select: none; }
-  .acc-select-face {
-    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
-    background: var(--panel); border: 1px solid var(--line2); border-radius: 12px;
-    cursor: pointer; transition: border-color .15s, box-shadow .15s;
+  /* ---------- 校区切换：右上角紧凑两段式（点击滑动） ---------- */
+  .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .campus-mini-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex: 0 0 auto; }
+  .campus-seg {
+    position: relative; display: flex; padding: 3px;
+    background: var(--panel); border: 1px solid var(--line2); border-radius: 999px;
+    user-select: none; box-shadow: var(--shadow);
   }
-  .acc-select-face:hover, .acc-select.open .acc-select-face {
-    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(11, 123, 255, .12);
+  .campus-seg-slider {
+    position: absolute; top: 3px; bottom: 3px; left: 3px;
+    width: calc((100% - 6px) / 2);
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    transition: transform .22s cubic-bezier(.2, .8, .3, 1);
+    pointer-events: none;
   }
-  .acc-select-user { font-size: 14px; font-weight: 600; letter-spacing: .02em; }
-  .acc-select-carrier { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-  .acc-select-arrow { margin-left: auto; width: 14px; height: 14px; color: var(--muted); transition: transform .2s; }
-  .acc-select.open .acc-select-arrow { transform: rotate(180deg); }
-  .acc-menu {
-    position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 20;
-    background: var(--panel); border: 1px solid var(--line2); border-radius: 12px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, .18); padding: 6px;
-    max-height: 260px; overflow: auto;
+  .campus-seg.at-benbu .campus-seg-slider { transform: translateX(100%); }
+  .campus-seg-item {
+    position: relative; z-index: 1;
+    padding: 6px 18px; border-radius: 999px; cursor: pointer;
+    font-size: 12.5px; font-weight: 600; color: var(--muted);
+    transition: color .2s;
   }
-  .acc-menu[hidden] { display: none; }
-  .acc-option { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
-  .acc-option:hover { background: var(--hover); }
-  .acc-option.active { background: var(--active-bg); }
-  .acc-option-main { min-width: 0; }
-  .acc-option-user { font-size: 13.5px; font-weight: 600; }
-  .acc-option-carrier { font-size: 11px; color: var(--muted); margin-top: 1px; }
-  .acc-option-check { margin-left: auto; color: var(--accent); font-size: 14px; }
+  .campus-seg-item.on { color: #fff; }
+  .campus-seg-item:not(.on):hover { color: var(--text); }
+  .campus-note { font-size: 11px; color: var(--muted); text-align: right; max-width: 240px; }
+  .campus-note.ok { color: var(--accent); font-weight: 600; }
+
+  /* ---------- 账号：东区 / 本部折叠面板 ---------- */
+  .acc-fold {
+    max-width: 760px; margin-bottom: 16px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden;
+  }
+  .acc-fold-item + .acc-fold-item { border-top: 1px solid var(--line); }
+  .acc-fold-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 16px; cursor: pointer; user-select: none;
+    transition: background .15s;
+  }
+  .acc-fold-head:hover { background: var(--hover); }
+  .acc-fold-arrow {
+    width: 13px; height: 13px; color: var(--muted); flex: 0 0 auto;
+    transition: transform .22s;
+  }
+  .acc-fold-item.open .acc-fold-arrow { transform: rotate(180deg); color: var(--accent); }
+  .acc-fold-count { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+  .acc-fold-body {
+    display: grid; grid-template-rows: 0fr;
+    transition: grid-template-rows .25s ease;
+  }
+  .acc-fold-item.open .acc-fold-body { grid-template-rows: 1fr; }
+  .acc-fold-inner { overflow: hidden; min-height: 0; padding: 0 16px; }
+  .acc-fold-item.open .acc-fold-inner { padding-bottom: 14px; }
+  .acc-col-title { font-size: 13.5px; font-weight: 650; letter-spacing: .02em; }
+  .acc-col-sub { font-size: 11px; color: var(--muted); }
+  .acc-list { display: flex; flex-direction: column; gap: 6px; }
+  .acc-empty {
+    font-size: 12px; color: var(--faint); text-align: center; padding: 15px 0;
+    border: 1px dashed var(--line2); border-radius: 8px;
+  }
+  .acc-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border: 1px solid var(--line2); border-radius: 8px;
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .acc-row:hover { background: var(--hover); }
+  .acc-row.active { border-color: var(--accent); background: var(--active-bg); }
+  .acc-row-main { min-width: 0; }
+  .acc-row-user { font-size: 13.5px; font-weight: 600; letter-spacing: .02em; }
+  .acc-row-carrier { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .acc-row-badge {
+    margin-left: auto; flex: 0 0 auto;
+    font-size: 10.5px; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 2px 8px;
+  }
+  .acc-add { align-self: flex-start; margin-top: 8px; }
 
   .account-editor {
     background: var(--panel); border: 1px solid var(--line); border-radius: 12px;

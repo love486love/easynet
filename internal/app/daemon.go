@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/love486love/easynet/internal/config"
@@ -19,11 +20,31 @@ import (
 	"github.com/love486love/easynet/internal/netinfo"
 	"github.com/love486love/easynet/internal/portal"
 	"github.com/love486love/easynet/internal/portal/drcom"
+	"github.com/love486love/easynet/internal/portal/ruijie"
 	"github.com/love486love/easynet/internal/probe"
 	"github.com/love486love/easynet/internal/session"
 	"github.com/love486love/easynet/internal/state"
 	"github.com/love486love/easynet/internal/trust"
 )
+
+// portalKind 返回协议名，仅用于日志可读性。
+func portalKind(ruijiePortal bool) string {
+	if ruijiePortal {
+		return "ruijie-eportal"
+	}
+	return "drcom-eportal"
+}
+
+// ssidInList 判断当前 SSID 是否属于任一目标校园网（忽略大小写与空白）。
+func ssidInList(cur string, targets []string) bool {
+	cur = strings.TrimSpace(cur)
+	for _, t := range targets {
+		if strings.EqualFold(cur, strings.TrimSpace(t)) {
+			return true
+		}
+	}
+	return false
+}
 
 // RunDaemon 启动常驻守护，直到 ctx 取消、收到停止请求或进程被结束。
 // 界面里「守护」开关打开时拉起 `easynet.exe --daemon`，开机自启也指向同一条命令。
@@ -47,8 +68,9 @@ func RunDaemon(profilePath string) error {
 	// 上一轮残留的停止标记会让本次启动立刻退出，这里先清掉。
 	_ = state.ClearStop(dir)
 
-	secret, err := creds.Load(dir)
-	if err != nil {
+	// 启动只校验"至少保存过一个账号"；具体用哪个校区的账号
+	// 由探测到的门户指纹在每次登录时决定（见 loginFn）。
+	if store, err := creds.LoadStore(dir); err != nil || len(store.Accounts) == 0 {
 		logger.Error("读取凭据失败", "err", err)
 		return fmt.Errorf("读取凭据失败（请先在界面保存账号）: %w", err)
 	}
@@ -72,15 +94,6 @@ func RunDaemon(profilePath string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	cred := portal.Credential{
-		Username: secret.Username,
-		Password: secret.Password,
-		Carrier:  secret.Carrier,
-	}
-	if cred.Carrier == "" {
-		cred.Carrier = prof.Login.Carrier
-	}
-
 	trusted, err := trust.Load(dir)
 	if err != nil {
 		exitMessage = "读取网关信任列表失败"
@@ -100,34 +113,81 @@ func RunDaemon(profilePath string) error {
 			logger.Warn("网关参数告警", "detail", w)
 		}
 
-		// 探针不可用（例如开机时 DNS 尚未就绪）拿不到 302 参数，
-		// 用本机网卡信息补齐，避免登录请求带空 userip 被网关拒绝。
-		if ep.Extra["userip"] == "" {
-			ep.Extra["userip"] = ni.IPv4
+		// 门户指纹选型：AC 拦截重定向指向 index.jsp 的是本部锐捷门户
+		// （10.255.240.8），其余保持东区 Dr.COM（dr1003）。
+		useRuijie := strings.Contains(ep.Extra["indexpath"], "index.jsp")
+		if !useRuijie && ep.Extra["indexpath"] == "" {
+			// Location 缺失时按当前 SSID 兜底（本部 SSID = ExtraSSIDs），
+			// 避免瞎猜成东区后朝不可达的 172.16.121.9:801 死超时。
+			useRuijie = ssidInList(ni.SSID, prof.Network.ExtraSSIDs)
 		}
-		if ep.Extra["usermac"] == "" {
-			ep.Extra["usermac"] = ni.MAC
+
+		// 东区账号只能连东区、本部账号只能连本部：按指纹取对应校区账号。
+		campus := creds.CampusDongqu
+		if useRuijie {
+			campus = creds.CampusBenbu
+		}
+		secret, serr := creds.LoadForCampus(dir, campus)
+		if serr != nil {
+			// 本地配置问题：走普通失败退避（间隔有上限），日志给出明确指引。
+			logger.Warn("校区账号缺失", "校区", campus, "err", serr)
+			return portal.Result{Code: 6, Message: serr.Error()}, serr
+		}
+		cred := portal.Credential{
+			Username: secret.Username,
+			Password: secret.Password,
+			Carrier:  secret.Carrier,
+		}
+		if cred.Carrier == "" {
+			cred.Carrier = prof.Login.Carrier
+		}
+
+		if !useRuijie {
+			// 探针不可用（例如开机时 DNS 尚未就绪）拿不到 302 参数，
+			// 用本机网卡信息补齐，避免登录请求带空 userip 被网关拒绝。
+			if ep.Extra["userip"] == "" {
+				ep.Extra["userip"] = ni.IPv4
+			}
+			if ep.Extra["usermac"] == "" {
+				ep.Extra["usermac"] = ni.MAC
+			}
 		}
 
 		// 四项校验：SSID / 门户白名单 / 随机 MAC（仅告警）/ 网关 MAC 信任。
 		// 信任列表为空时只记录不阻断，避免首次使用被卡死。
-		if _, gerr := guard.Check(guard.Input{
-			TargetSSID:   prof.Network.SSID,
+		allowedHosts := prof.Portal.AllowedHosts
+		if len(allowedHosts) == 0 {
+			allowedHosts = []string{prof.Portal.Host}
+		}
+		if gres, gerr := guard.Check(guard.Input{
+			TargetSSIDs:  append([]string{prof.Network.SSID}, prof.Network.ExtraSSIDs...),
 			CurrentSSID:  ni.SSID,
 			PortalHost:   ep.Host,
-			AllowedHosts: []string{prof.Portal.Host},
+			AllowedHosts: allowedHosts,
 			GatewayMAC:   ni.GatewayMAC,
 			TrustedMACs:  trusted,
 			RandomMAC:    ni.RandomMAC,
 		}); gerr != nil {
 			logger.Warn("安全校验未通过，放弃本次登录", "err", gerr)
 			return portal.Result{Code: 6, Message: gerr.Error()}, gerr
+		} else {
+			// 非阻断告警（如跨校区遇到新网关 MAC）要留痕，便于排障。
+			for _, w := range gres.Warnings {
+				logger.Warn("安全校验告警", "detail", w)
+			}
 		}
 
 		lastGatewayMAC = ni.GatewayMAC
-		logger.Info("发起登录", "门户", ep.Host, "账号", logx.MaskAccount(cred.Username),
-			"userip", ep.Extra["userip"], "ssid", ni.SSID)
-		client := drcom.NewWithSuffixes(prof.Login.CarrierSuffixes)
+		logger.Info("发起登录", "门户", ep.Host, "协议", portalKind(useRuijie),
+			"账号", logx.MaskAccount(cred.Username), "userip", ep.Extra["userip"], "ssid", ni.SSID)
+		var client portal.Portal
+		if useRuijie {
+			rj := ruijie.New()
+			rj.CaptchaDir = filepath.Join(dir, "captcha")
+			client = rj
+		} else {
+			client = drcom.NewWithSuffixes(prof.Login.CarrierSuffixes)
+		}
 		res, lerr := client.Login(ctx, ep, cred)
 		if lerr != nil {
 			// 网络错误可能携带完整登录网址（query 含明文密码），落盘与日志前脱敏。
@@ -146,27 +206,34 @@ func RunDaemon(profilePath string) error {
 		return res, lerr
 	}
 
-	// 自动连回校园 Wi-Fi：仅当开关文件存在、且当前不是目标 SSID 时尝试。
+	// 自动连回校园 Wi-Fi：仅当开关文件存在、且当前不属于任一目标
+	// 校园网（东区/本部）时尝试，目标 SSID 由概览页滑条记录的优先校区
+	// 决定，按优先级逐个尝试（本部：JXAU 优先，不行再 CMCC-JXAU）。
 	// 失败后 1 分钟内不重复尝试，避免 Wi-Fi 关闭时日志刷屏。
 	var lastWiFiTry time.Time
+	targetSSIDs := append([]string{prof.Network.SSID}, prof.Network.ExtraSSIDs...)
+	preferSSIDs := prof.SSIDsForCampus(prof.Network.PreferCampus)
 	autoWiFi := func() {
 		if _, err := os.Stat(filepath.Join(dir, "wifi_auto")); err != nil {
 			return
 		}
 		ni, err := netinfo.Get()
-		if err != nil || ni.SSID == prof.Network.SSID {
+		if err != nil || ssidInList(ni.SSID, targetSSIDs) {
 			return
 		}
 		if time.Since(lastWiFiTry) < time.Minute {
 			return
 		}
 		lastWiFiTry = time.Now()
-		if err := netinfo.Connect(prof.Network.SSID); err != nil {
-			logger.Warn("自动连接校园 Wi-Fi 失败", "err", err)
+		for _, ssid := range preferSSIDs {
+			if err := netinfo.Connect(ssid); err != nil {
+				logger.Warn("自动连接校园 Wi-Fi 失败，尝试下一个", "ssid", ssid, "err", err)
+				continue
+			}
+			logger.Info("已请求连接校园 Wi-Fi", "ssid", ssid)
+			time.Sleep(3 * time.Second)
 			return
 		}
-		logger.Info("已请求连接校园 Wi-Fi", "ssid", prof.Network.SSID)
-		time.Sleep(3 * time.Second)
 	}
 
 	logger.Info("守护启动", "profile", prof.ID, "ssid", prof.Network.SSID)
@@ -212,6 +279,29 @@ func RunDaemon(profilePath string) error {
 		Probe: func(ctx context.Context) (portal.State, probe.Evidence, error) {
 			autoWiFi()
 			st, ev, perr := session.ProbeOnce(ctx, prof)
+
+			// 本部探针抖动防误判：网络差时 baidu/jxau 探针反复 timeout，
+			// 状态在在线/离线间横跳。SSID 处于本部时用门户权威接口
+			// getOnlineUserInfo 复核，以它为准（查询失败则维持原判定）。
+			if st != portal.StateOnline && ssidInList(netinfo.SSID(), prof.Network.ExtraSSIDs) {
+				host := ""
+				for _, h := range prof.Portal.AllowedHosts {
+					if !strings.EqualFold(h, prof.Portal.Host) {
+						host = h // 白名单里非东区门户的即本部锐捷门户
+						break
+					}
+				}
+				if host != "" {
+					cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+					online := ruijie.CheckOnline(cctx, host, 80)
+					cancel()
+					if online {
+						logger.Info("探针判定不稳定，已按门户在线表复核为在线")
+						st, ev, perr = portal.StateOnline, probe.Evidence{}, nil
+					}
+				}
+			}
+
 			if perr != nil {
 				lastMessage = perr.Error()
 			} else if st == portal.StateOnline {
@@ -223,21 +313,39 @@ func RunDaemon(profilePath string) error {
 		Login: loginFn,
 		Log:   logger,
 		Stop:  func() bool { return state.StopRequested(dir) },
-		// SSID 判离线：已连目标校园网 3 次探不通即登录；连别的网络则等待。
-		TargetSSID:  prof.Network.SSID,
+		// SSID 判离线：已连任一目标校园网（东区/本部）3 次探不通即登录；
+		// 连别的网络则等待。
+		TargetSSIDs: append([]string{prof.Network.SSID}, prof.Network.ExtraSSIDs...),
 		CurrentSSID: netinfo.SSID,
 		// 门户可达预检：开机链路未就绪时（日志里的
 		// "socket operation unreachable" 场景）先等 TCP 能连上门户再登录。
+		// 跨校区：东区/本部门户都要探，任一可达即放行——否则在本部时
+		// 只探东区 172.16.121.9:801 永远不通，守护会一直卡在"门户尚未可达"。
 		PortalReachable: func(ctx context.Context) bool {
-			addr := net.JoinHostPort(prof.Portal.Host, strconv.Itoa(prof.Portal.Port))
-			cctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-			defer cancel()
-			conn, err := (&net.Dialer{}).DialContext(cctx, "tcp", addr)
-			if err != nil {
-				return false
+			type ep struct {
+				host string
+				port int
 			}
-			_ = conn.Close()
-			return true
+			var eps []ep
+			eps = append(eps, ep{prof.Portal.Host, prof.Portal.Port})
+			for _, h := range prof.Portal.AllowedHosts {
+				if h == prof.Portal.Host {
+					continue
+				}
+				// 白名单里非配置门户的默认端口：本部锐捷 10.255.240.8 走 80。
+				eps = append(eps, ep{h, 80})
+			}
+			for _, e := range eps {
+				addr := net.JoinHostPort(e.host, strconv.Itoa(e.port))
+				cctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+				conn, err := (&net.Dialer{}).DialContext(cctx, "tcp", addr)
+				cancel()
+				if err == nil {
+					_ = conn.Close()
+					return true
+				}
+			}
+			return false
 		},
 		OnVerified: func() {
 			if lastGatewayMAC == "" {
