@@ -110,12 +110,48 @@
         </div>
 
         <div class="grid">
-          <div class="card"><div class="label">Wi-Fi</div><div class="value" id="ssid">—</div></div>
-          <div class="card"><div class="label">本机 IP</div><div class="value mono" id="ipv4">—</div></div>
-          <div class="card"><div class="label">默认网关</div><div class="value mono" id="gateway">—</div></div>
-          <div class="card"><div class="label">网关 MAC（TOFU）</div><div class="value mono" id="gwmac">—</div></div>
-          <div class="card"><div class="label">本机 MAC</div><div class="value mono" id="mac">—</div></div>
-          <div class="card"><div class="label">凭据 / 信任</div><div class="value" id="cred">—</div></div>
+          <div class="card">
+            <div class="card-head">
+              <span class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 8.6a14 14 0 0 1 18 0"/><path d="M6.6 12a9 9 0 0 1 10.8 0"/><path d="M10 15.4a4 4 0 0 1 4 0"/><circle cx="12" cy="18.8" r="1.1" fill="currentColor" stroke="none"/></svg></span>
+              <span class="label">Wi-Fi</span>
+            </div>
+            <div class="value accent" id="ssid">—</div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <span class="card-ico alt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9.5h.01M11 9.5h6M7 13.5h10M7 16.5h6"/></svg></span>
+              <span class="label">本机 IP</span>
+            </div>
+            <div class="value mono" id="ipv4">—</div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <span class="card-ico alt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 16.5h.01M11 16.5h.01M12 13V9M8.6 9.4a5 5 0 0 1 6.8 0"/></svg></span>
+              <span class="label">默认网关</span>
+            </div>
+            <div class="value mono" id="gateway">—</div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <span class="card-ico warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg></span>
+              <span class="label">网关 MAC（TOFU）</span>
+            </div>
+            <div class="value mono" id="gwmac">—</div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <span class="card-ico alt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9.5 3v4M14.5 3v4M9.5 17v4M14.5 17v4M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4"/></svg></span>
+              <span class="label">本机 MAC</span>
+            </div>
+            <div class="value mono" id="mac">—</div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <span class="card-ico ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><circle cx="12" cy="11" r="1.6"/><path d="M12 12.6V15"/></svg></span>
+              <span class="label">凭据 / 信任</span>
+            </div>
+            <div class="value" id="cred">—</div>
+          </div>
         </div>
 
         <div class="rate-card">

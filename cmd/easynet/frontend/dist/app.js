@@ -113,8 +113,9 @@ function renderState(s) {
   document.getElementById('gateway').textContent = s.gateway || '—';
   document.getElementById('gwmac').textContent = s.gateway_mac || '（未取到）';
   document.getElementById('mac').textContent = (s.mac || '—') + (s.random_mac ? '（随机）' : '');
-  document.getElementById('cred').textContent =
-    (s.has_cred ? '已保存' : '未保存') + ' / ' + (s.has_trust ? '已信任网关' : '未记录');
+  document.getElementById('cred').innerHTML =
+    '<span class="pill ' + (s.has_cred ? 'ok' : 'bad') + '">' + (s.has_cred ? '账号已保存' : '账号未保存') + '</span>' +
+    '<span class="pill ' + (s.has_trust ? 'ok' : '') + '">' + (s.has_trust ? '网关已信任' : '网关未记录') + '</span>';
   document.getElementById('credHint').style.display = s.has_cred ? 'none' : 'flex';
 }
 
