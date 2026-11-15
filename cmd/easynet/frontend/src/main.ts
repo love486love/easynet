@@ -88,9 +88,11 @@ $$('.nav-item').forEach(el => {
 });
 
 function setMsg(text: string, ok?: boolean) {
+  // 操作反馈同样用弹窗：渐隐提示，不在页面里留一条常驻文本
+  if (ok === false) toastError(text);
+  else toast(text, ok === true);
   const el = $('msg');
-  el.textContent = text;
-  el.className = 'msg ' + (ok === true ? 'ok' : ok === false ? 'bad' : '');
+  if (el) { el.textContent = ''; el.className = 'msg'; }
 }
 
 let toastTimer = null;
@@ -104,7 +106,21 @@ function toast(text, ok) {
   el.textContent = text;
   el.className = 'toast show' + (ok === false ? ' bad' : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(function () { el.className = 'toast' + (ok === false ? ' bad' : ''); }, 2600);
+  // 错误给更长的阅读时间，正常提示保持轻快
+  toastTimer = setTimeout(function () { el.className = 'toast' + (ok === false ? ' bad' : ''); }, ok === false ? 5200 : 2600);
+}
+
+let lastErrText = '';
+let lastErrAt = 0;
+// 错误统一走弹窗并自动隐去；同一内容 30 秒内只弹一次，避免轮询反复刷屏
+function toastError(text: string) {
+  const t = String(text || '').trim();
+  if (!t) return;
+  const now = Date.now();
+  if (t === lastErrText && now - lastErrAt < 30000) return;
+  lastErrText = t;
+  lastErrAt = now;
+  toast(t, false);
 }
 
 function renderState(s) {
@@ -114,13 +130,12 @@ function renderState(s) {
   dot.className = 'dot ' + (s.state || '');
   if (s.state === 'online') { text.textContent = '已连接'; sub.textContent = '网络认证正常'; }
   else if (s.state === 'offline') { text.textContent = '未认证'; sub.textContent = '需要登录校园网'; }
-  else { text.textContent = s.ssid ? '状态未知' : '未连接 Wi-Fi'; sub.textContent = s.message || '无法判断网络状态'; }
+  else { text.textContent = s.ssid ? '状态未知' : '未连接 Wi-Fi'; sub.textContent = s.ssid ? '正在检测网络状态' : '请先连接校园网 Wi-Fi'; }
 
+  // 状态卡只表达状态，错误与详情交给弹窗，不占用卡片空间
   const detail = $('stateDetail');
-  if (detail) {
-    detail.textContent = s.detail || '';
-    detail.style.display = s.detail ? 'block' : 'none';
-  }
+  if (detail) { detail.textContent = ''; detail.style.display = 'none'; }
+  if (s.state !== 'online' && s.state !== 'offline') toastError(s.detail || s.message);
 
   $('ssid').textContent = s.ssid || '—';
   $('ipv4').textContent = s.ipv4 || '—';
@@ -256,8 +271,9 @@ async function loadDaemon() {
     dot.className = 'dot ' + (running ? (d.state === 'online' ? 'online' : '') : 'offline');
     $('dTitle').textContent = running ? '后台守护运行中' : '后台守护未运行';
     let sub = running ? '已自动维持在线，关闭窗口不影响' : '关闭窗口后不会自动重连';
-    if (d.message) sub = d.message;
     $('dSub').textContent = sub;
+    // 守护出错时用弹窗提示，不把长错误塞进卡片
+    if (d.message && String(d.message) !== sub) toastError(String(d.message));
     $('dSwitch').classList.toggle('on', !!(await App().DaemonEnabled()));
   } catch (e) { }
 }
@@ -279,6 +295,8 @@ async function toggleDaemon() {
 }
 
 const CARRIER_NAMES = { cmcc: '中国移动', ctcc: '中国电信', cucc: '中国联通', campus: '校园线路' };
+// 头像上的单字标记，用运营商区分线路
+const CARRIER_SHORT = { cmcc: '移', ctcc: '电', cucc: '联', campus: '校' };
 const CAMPUS_NAMES = { dongqu: '东区', benbu: '本部' };
 // 校区 → 目标 SSID（与 config.SSIDForCampus 保持一致）
 const CAMPUS_SSID = { dongqu: 'JXAU-Stu', benbu: 'JXAU' };
@@ -310,13 +328,18 @@ function renderAccLists() {
     if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'acc-empty';
-      empty.textContent = '暂无' + CAMPUS_NAMES[campus] + '账号';
+      empty.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.4 3.1-5.2 7-5.2s7 1.8 7 5.2"/></svg>' +
+        '<span>还没有' + CAMPUS_NAMES[campus] + '账号</span>';
       box.appendChild(empty);
       return;
     }
     list.forEach(a => {
       const row = document.createElement('div');
       row.className = 'acc-row' + (a.username === selectedUser ? ' active' : '');
+      // 运营商色块头像：扫一眼就能区分线路
+      const avatar = document.createElement('div');
+      avatar.className = 'acc-avatar ' + (a.carrier || 'campus');
+      avatar.textContent = CARRIER_SHORT[a.carrier] || '校';
       const main = document.createElement('div');
       main.className = 'acc-row-main';
       const u = document.createElement('div');
@@ -324,15 +347,16 @@ function renderAccLists() {
       u.textContent = a.username;
       const c = document.createElement('div');
       c.className = 'acc-row-carrier';
-      c.textContent = carrierName(a.carrier) + (a.current ? ' · 使用中' : '');
+      c.textContent = carrierName(a.carrier) + ' · ' + (CAMPUS_NAMES[a.campus] || '东区');
       main.appendChild(u);
       main.appendChild(c);
+      row.appendChild(avatar);
       row.appendChild(main);
       if (a.current) {
-        const badge = document.createElement('span');
-        badge.className = 'acc-row-badge';
-        badge.textContent = '使用中';
-        row.appendChild(badge);
+        const st = document.createElement('div');
+        st.className = 'acc-row-state';
+        st.innerHTML = '<span class="acc-row-dot"></span>使用中';
+        row.appendChild(st);
       }
       row.onclick = () => selectAccount(a.username);
       box.appendChild(row);
@@ -494,9 +518,9 @@ async function refresh() {
 }
 
 function setLogMsg(text: string, ok?: boolean) {
-  const el = $('logMsg');
-  el.textContent = text || '';
-  el.className = 'msg ' + (ok === true ? 'ok' : ok === false ? 'bad' : '');
+  // 导出 / 打开目录的反馈统一走弹窗
+  if (ok === false) toastError(text);
+  else toast(text, ok === true);
 }
 
 async function exportLogs() {
@@ -520,15 +544,95 @@ async function openLogsDir() {
   }
 }
 
+// 日志行是后端输出的 JSON，这里解析成结构化事件；解析失败则按原文显示
+type LogEntry = { time: string; level: string; msg: string; extra: string; raw: string };
+let logEntries: LogEntry[] = [];
+let logLevelFilter = 'all';
+
+function escHtml(s: string): string {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as any)[c]);
+}
+
+function parseLogLine(line: string): LogEntry {
+  const raw = line;
+  try {
+    const o = JSON.parse(line);
+    const m = String(o.time || '').match(/T(\d{2}:\d{2}:\d{2})/);
+    const level = String(o.level || 'INFO').toUpperCase();
+    const msg = String(o.msg || '');
+    const extras: string[] = [];
+    for (const k of Object.keys(o)) {
+      if (k === 'time' || k === 'level' || k === 'msg') continue;
+      const v = o[k];
+      if (v === '' || v === null || v === undefined) continue;
+      extras.push(k + ' ' + String(v));
+    }
+    return { time: m ? m[1] : '', level, msg, extra: extras.join(' · '), raw };
+  } catch (e) {
+    return { time: '', level: '', msg: raw, extra: '', raw };
+  }
+}
+
+function levelClass(level: string): string {
+  const l = level.toLowerCase();
+  if (l === 'warn' || l === 'warning') return 'warn';
+  if (l === 'error' || l === 'fatal') return 'error';
+  if (l === 'debug') return 'debug';
+  return 'info';
+}
+
+function renderLogs() {
+  const box = $('logView');
+  if (!box) return;
+  const search = $('logSearch');
+  const kw = String(search ? search.value : '').trim().toLowerCase();
+  const rows = logEntries.filter(e => {
+    if (logLevelFilter === 'warn' && e.level !== 'WARN' && e.level !== 'ERROR') return false;
+    if (logLevelFilter === 'error' && e.level !== 'ERROR') return false;
+    return !kw || e.raw.toLowerCase().includes(kw);
+  });
+  if (!rows.length) {
+    box.innerHTML = '<div class="log-empty">' + (logEntries.length ? '没有匹配的日志' : '暂无日志') + '</div>';
+    return;
+  }
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
+  const keepTop = box.scrollTop;
+  box.innerHTML = rows.map(e => {
+    const extra = e.extra ? '<span class="log-extra"> · ' + escHtml(e.extra) + '</span>' : '';
+    return '<div class="log-row ' + levelClass(e.level) + '">' +
+      '<span class="log-time">' + escHtml(e.time || '--:--:--') + '</span>' +
+      '<span class="log-lv">' + (e.level ? escHtml(e.level) : '—') + '</span>' +
+      '<span class="log-msg">' + escHtml(e.msg) + extra + '</span>' +
+      '</div>';
+  }).join('');
+  const follow = $('logFollow');
+  if ((!follow || follow.checked) && nearBottom) box.scrollTop = box.scrollHeight;
+  else box.scrollTop = keepTop;
+}
+
+// 内联 oninput / onclick 需要显式暴露
+(window as any).renderLogs = renderLogs;
+
 async function loadLogs() {
   if (!App()) return;
   try {
     const lines = await App().Logs();
-    const pre = $('logs');
-    pre.textContent = (lines || []).join('\n') || '（暂无日志）';
-    pre.scrollTop = pre.scrollHeight;
+    logEntries = (lines || []).map(parseLogLine);
+    const meta = $('logMeta');
+    if (meta) meta.textContent = '最近 ' + logEntries.length + ' 条 · 每 5 秒刷新';
+    renderLogs();
   } catch (e) { }
 }
+
+// 级别筛选
+$$('#logLevel .seg-item').forEach((el: any) => {
+  el.onclick = () => {
+    $$('#logLevel .seg-item').forEach((n: any) => n.classList.remove('on'));
+    el.classList.add('on');
+    logLevelFilter = el.dataset.level || 'all';
+    renderLogs();
+  };
+});
 
 async function doLogin() {
   if (!App()) return;
@@ -968,6 +1072,60 @@ setInterval(updateNetWindow, 30000);
 
 // 迁移到 ES module 后，index.html 的内联 onclick 需要显式挂到 window。
 Object.assign(window, { winMin, winMax, winClose, openRepo, openRelease, resolveTheme, updateThemeSeg, applyTheme, toggleTheme, setMsg, toast, renderState, goAccount, fmtRate, fmtBytes, setRateNum, loadNetRate, drawRateChart, rgba, loadDaemon, toggleDaemon, carrierName, loadAccounts, renderAccLists, renderEditor, newAccount, updateCampusLabel, selectAccount, deleteCurrent, markCampusSide, loadCampus, setCampus, toggleFold, renderFoldCounts, refresh, setLogMsg, exportLogs, openLogsDir, loadLogs, doLogin, saveCred, loadAutostart, loadWifiAuto, toggleWifiAuto, toggleAutostart, checkUpdate, doUpdate, onVersionClick, nwAt, nwWindow, nwFmt, nwClock, updateNetWindow, startTutorial, showTutorialStep, nextTutorial, prevTutorial, endTutorial, maybeStartTutorial })
+
+/* ---------- 鼠标光晕 ---------- */
+// 光晕挂在一个只覆盖内容区的固定容器里：容器负责裁切与边缘渐隐，
+// 光晕自身保持正圆，因此边界不会出现直角。
+function initCursorGlow() {
+  const area = document.createElement('div');
+  area.className = 'glow-area';
+  const glow = document.createElement('div');
+  glow.className = 'cursor-glow';
+  area.appendChild(glow);
+  document.body.appendChild(area);
+
+  const R = 230; // 与 .cursor-glow 的 460px 尺寸对应
+  let rect = area.getBoundingClientRect();
+  let raf = 0;
+  let x = 0;
+  let y = 0;
+  let shown = false;
+
+  const place = () => {
+    glow.style.transform =
+      'translate3d(' + (x - rect.left - R) + 'px,' + (y - rect.top - R) + 'px,0)';
+  };
+
+  window.addEventListener('mousemove', (e: MouseEvent) => {
+    x = e.clientX;
+    y = e.clientY;
+    if (!shown) {
+      shown = true;
+      place();
+      area.classList.add('on');
+      return;
+    }
+    if (!raf) {
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        place();
+      });
+    }
+  }, { passive: true });
+
+  window.addEventListener('resize', () => {
+    rect = area.getBoundingClientRect();
+  });
+
+  const hide = () => {
+    shown = false;
+    area.classList.remove('on');
+  };
+  window.addEventListener('mouseleave', hide);
+  window.addEventListener('blur', hide);
+}
+
+initCursorGlow();
 
 
 

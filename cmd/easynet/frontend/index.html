@@ -58,7 +58,7 @@
           <div class="nw-bar"><i id="nwFill"></i></div>
           <div class="nw-times" id="nwEnd"></div>
         </div>
-        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.5.2</div>
+        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.6.0</div>
       </div>
     </aside>
 
@@ -181,10 +181,15 @@
         <div class="acc-fold">
           <div class="acc-fold-item open" id="foldDongqu">
             <div class="acc-fold-head" onclick="toggleFold('dongqu')">
-              <svg class="acc-fold-arrow" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg>
-              <span class="acc-col-title">东区账号</span>
-              <span class="acc-col-sub">连 JXAU-Stu 时使用</span>
+              <span class="acc-fold-ico pig">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.2 8.2 5.9 3.2l4 3.1z"/><path d="M18.8 8.2 18.1 3.2l-4 3.1z"/><path fill-rule="evenodd" d="M12 5.4c-4.6 0-8.3 3.2-8.3 7.2s3.7 7.2 8.3 7.2 8.3-3.2 8.3-7.2S16.6 5.4 12 5.4zm0 7.5c1.5 0 2.7.9 2.7 2s-1.2 2-2.7 2-2.7-.9-2.7-2 1.2-2 2.7-2z"/></svg>
+              </span>
+              <div class="acc-fold-text">
+                <span class="acc-col-title">东区账号</span>
+                <span class="acc-col-sub">连 JXAU-Stu 时使用</span>
+              </div>
               <span class="acc-fold-count" id="countDongqu"></span>
+              <svg class="acc-fold-arrow" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg>
             </div>
             <div class="acc-fold-body">
               <div class="acc-fold-inner">
@@ -195,10 +200,15 @@
           </div>
           <div class="acc-fold-item" id="foldBenbu">
             <div class="acc-fold-head" onclick="toggleFold('benbu')">
-              <svg class="acc-fold-arrow" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg>
-              <span class="acc-col-title">本部账号</span>
-              <span class="acc-col-sub">连 JXAU 时使用</span>
+              <span class="acc-fold-ico gate">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.3 3.4h11.4v3.4H6.3z"/><path d="M6.3 6.8h2.8V21H6.3z"/><path d="M14.9 6.8h2.8V21h-2.8z"/><path d="M2.2 8.4h2.3V21H2.2z"/><path d="M19.5 8.4h2.3V21h-2.3z"/></svg>
+              </span>
+              <div class="acc-fold-text">
+                <span class="acc-col-title">本部账号</span>
+                <span class="acc-col-sub">连 JXAU 时使用</span>
+              </div>
               <span class="acc-fold-count" id="countBenbu"></span>
+              <svg class="acc-fold-arrow" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg>
             </div>
             <div class="acc-fold-body">
               <div class="acc-fold-inner">
@@ -211,9 +221,14 @@
 
         <div class="account-editor">
           <div class="editor-head">
-            <div>
-              <div class="label" id="editorLabel">新增账号</div>
-              <div class="editor-title" id="editorTitle">填写学号、密码与运营商</div>
+            <div class="editor-title-wrap">
+              <span class="editor-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c0-3.6 3.4-5.6 7.5-5.6s7.5 2 7.5 5.6"/></svg>
+              </span>
+              <div>
+                <div class="label" id="editorLabel">新增账号</div>
+                <div class="editor-title" id="editorTitle">填写学号、密码与运营商</div>
+              </div>
             </div>
             <button class="btn danger" id="delBtn" style="display:none" onclick="deleteCurrent()">删除此账号</button>
           </div>
@@ -250,20 +265,35 @@
           <div class="msg" id="credMsg"></div>
         </div>
 
-        <div class="hint">
-          守护按探测到的门户自动选用对应校区的账号；账号文件位于 <code>%LOCALAPPDATA%\easynet\accounts.bin</code>，由 DPAPI 以当前用户身份加密。旧版本保存的账号自动归入东区列表。
-        </div>
+        <details class="acc-hint">
+          <summary>账号如何存储？</summary>
+          <div class="hint">
+            守护按探测到的门户自动选用对应校区的账号；账号文件位于 <code>%LOCALAPPDATA%\easynet\accounts.bin</code>，由 DPAPI 以当前用户身份加密。旧版本保存的账号自动归入东区列表。
+          </div>
+        </details>
       </section>
 
       <section class="page" id="page-logs">
-        <h2 class="page-title">运行日志</h2>
-        <div class="page-sub">来自 %LOCALAPPDATA%\easynet\logs\easynet.log，每 5 秒刷新</div>
-        <div class="log-bar">
-          <button class="btn" onclick="exportLogs()">导出日志</button>
-          <button class="btn" onclick="openLogsDir()">打开日志目录</button>
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">运行日志</h2>
+            <div class="page-sub" id="logMeta">最近 40 条 · 每 5 秒刷新</div>
+          </div>
+          <div class="log-tools">
+            <div class="seg seg-sm" id="logLevel">
+              <span class="seg-item on" data-level="all">全部</span>
+              <span class="seg-item" data-level="warn">警告</span>
+              <span class="seg-item" data-level="error">错误</span>
+            </div>
+            <input class="log-search" id="logSearch" placeholder="搜索日志…" oninput="renderLogs()">
+            <button class="btn" onclick="exportLogs()">导出</button>
+            <button class="btn" onclick="openLogsDir()">打开目录</button>
+            <label class="log-follow" title="新日志自动滚动到底部">
+              <input type="checkbox" id="logFollow" checked> 自动滚动
+            </label>
+          </div>
         </div>
-        <pre id="logs">加载中…</pre>
-        <div class="msg" id="logMsg"></div>
+        <div class="log-view" id="logView">加载中…</div>
       </section>
 
       <section class="page" id="page-settings">
@@ -335,7 +365,7 @@
           <div class="about-head">
             <img class="about-logo" src="/appicon.png" alt="easynet">
             <div class="about-name">easynet</div>
-            <span class="about-ver" onclick="checkUpdate(false)">v0.5.2</span>
+            <span class="about-ver" onclick="checkUpdate(false)">v0.6.0</span>
             <div class="about-sub">江西农业大学校园网自动认证客户端</div>
           </div>
 
