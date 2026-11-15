@@ -641,6 +641,15 @@ async function doLogin() {
   setMsg('正在认证…');
   try {
     const msg = await App().Login();
+    // 本部验证码自动识别连续失败：转为人工输入
+    if (msg === '需要手动输入验证码') {
+      const img = await App().CaptchaChallenge();
+      if (img) {
+        openCaptcha(img);
+        btn.disabled = false;
+        return;
+      }
+    }
     setMsg(msg, msg.indexOf('成功') >= 0);
   } catch (e) {
     setMsg(String(e), false);
@@ -649,6 +658,47 @@ async function doLogin() {
     await refresh();
   }
 }
+
+/* ---------- 人工输入验证码 ---------- */
+function openCaptcha(img) {
+  const modal = $('captchaModal');
+  const el = $('captchaImg') as HTMLImageElement;
+  if (!modal || !el) return;
+  el.src = img;
+  ($('captchaInput') as HTMLInputElement).value = '';
+  modal.hidden = false;
+  ($('captchaInput') as HTMLInputElement).focus();
+}
+
+function closeCaptcha() {
+  const modal = $('captchaModal');
+  if (modal) modal.hidden = true;
+}
+
+async function submitCaptcha() {
+  if (!App()) return;
+  const code = ($('captchaInput') as HTMLInputElement).value.trim();
+  if (code.length !== 4) {
+    toast('请输入 4 位验证码', false);
+    return;
+  }
+  try {
+    const msg = await App().SubmitCaptcha(code);
+    if (msg.indexOf('成功') >= 0) {
+      closeCaptcha();
+      toast(msg, true);
+      await refresh();
+    } else {
+      toast(msg, false);
+    }
+  } catch (e) {
+    toast(String(e), false);
+  }
+}
+
+(window as any).openCaptcha = openCaptcha;
+(window as any).closeCaptcha = closeCaptcha;
+(window as any).submitCaptcha = submitCaptcha;
 
 async function saveCred() {
   if (!App()) return;
