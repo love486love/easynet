@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -34,6 +35,10 @@ type App struct {
 	// 排查问题时才能在一个文件里看到完整过程（含检查更新、下载、替换）。
 	log      *slog.Logger
 	closeLog func() error
+	// pendingRuijie 保留一次 OCR 失败的本部登录会话，供用户人工输入验证码；
+	// pendingCred 是对应的凭据（账号密码从磁盘重新读取后填充）。
+	pendingRuijie *ruijie.Client
+	pendingCred   portal.Credential
 }
 
 // Status 是状态接口的返回结构（字段名会原样序列化给前端）。
@@ -324,6 +329,15 @@ func (a *App) Login() (string, error) {
 		return "", fmt.Errorf("%s", masked)
 	}
 	if !res.OK {
+		if res.Code == 7 && useRuijie {
+			// OCR 连续失败：保留会话与验证码图，交由界面弹窗让用户手动输入。
+			if rj, ok := client.(*ruijie.Client); ok {
+				a.pendingRuijie = rj
+				a.pendingCred = cred
+				a.logger().Warn("验证码识别连续失败，转人工输入", "门户", ep.Host)
+			}
+			return "需要手动输入验证码", nil
+		}
 		a.logger().Warn("手动认证被网关拒绝", "门户", ep.Host, "code", res.Code, "消息", logx.MaskURL(res.Message))
 		return "认证被拒: " + logx.MaskURL(res.Message), nil
 	}
@@ -334,6 +348,42 @@ func (a *App) Login() (string, error) {
 		msg += "（" + strings.Join(warns, "；") + "）"
 	}
 	return msg, nil
+}
+
+// CaptchaChallenge 返回等待人工输入的验证码图（data URL）；无待处理会话时返回空串。
+func (a *App) CaptchaChallenge() string {
+	if a.pendingRuijie == nil {
+		return ""
+	}
+	raw := a.pendingRuijie.PendingCaptcha()
+	if len(raw) == 0 {
+		return ""
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(raw)
+}
+
+// SubmitCaptcha 提交用户手动输入的 4 位验证码，完成后清除待处理会话。
+func (a *App) SubmitCaptcha(code string) (string, error) {
+	code = strings.TrimSpace(code)
+	if len(code) != 4 {
+		return "", fmt.Errorf("请输入 4 位验证码")
+	}
+	if a.pendingRuijie == nil {
+		return "", fmt.Errorf("没有待处理的验证码，请重新点击登录")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	res, err := a.pendingRuijie.LoginWithCaptcha(ctx, a.pendingCred, code)
+	if err != nil {
+		return "", fmt.Errorf("%s", logx.MaskURL(err.Error()))
+	}
+	a.pendingRuijie = nil
+	if !res.OK {
+		a.logger().Warn("手动验证码认证被拒", "code", res.Code, "消息", logx.MaskURL(res.Message))
+		return "认证被拒: " + logx.MaskURL(res.Message), nil
+	}
+	a.logger().Info("手动验证码认证成功")
+	return "认证成功", nil
 }
 
 // SaveCred 新增或更新账号（DPAPI 加密），并把它设为所属校区的当前账号。
