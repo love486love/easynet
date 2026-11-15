@@ -32,6 +32,7 @@ var builtinAnswers = map[string]string{
 	"validcode-2.png": "2284",
 	"validcode-3.png": "0336",
 	"validcode-4.png": "9348",
+	"validcode-5.png": "1537",
 }
 
 type glyph [gridW * gridH]bool

@@ -26,6 +26,7 @@ func TestRecognizeBuiltin(t *testing.T) {
 		"validcode-2.png": "2284",
 		"validcode-3.png": "0336",
 		"validcode-4.png": "9348",
+		"validcode-5.png": "1537",
 	}
 	for name, answer := range want {
 		raw, err := builtinFS.ReadFile("testdata/" + name)
