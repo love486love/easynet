@@ -110,7 +110,7 @@ Android 版会复用同一套 ePortal 认证与判定逻辑，目前尚未开始
 
 ## 从源码构建
 
-需要 Go 1.22 与 [Wails v2.10.2](https://wails.io)：
+需要 Go 1.22、[Wails v2.10.2](https://wails.io) 与 Node 20+（前端用 Vite + TypeScript 构建）：
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
@@ -118,7 +118,9 @@ cd cmd/easynet
 wails build -platform windows/amd64 -webview2 browser -ldflags "-s -w"
 ```
 
-产物在 `cmd/easynet/build/bin/easynet.exe`。前端是手写 HTML/CSS/JS，构建过程不调用 Node。
+产物在 `cmd/easynet/build/bin/easynet.exe`。`wails build` 会自动安装前端依赖并执行 `vite build`；只改 Go 代码时也可直接 `go build`，此时使用仓库中已提交的 `frontend/dist` 产物。
+
+前端源码在 `cmd/easynet/frontend/src/`（`main.ts` + `style.css`），改动后执行 `npm run build` 重新生成 `frontend/dist`。
 
 ## 项目结构
 

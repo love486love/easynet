@@ -19,6 +19,21 @@ jobs:
         run: |
           $files = gofmt -l .
           if ($files) { Write-Error "以下文件未格式化:`n$files"; exit 1 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cmd/easynet/frontend/package-lock.json
+      - name: frontend typecheck
+        working-directory: cmd/easynet/frontend
+        run: |
+          npm ci
+          npm run typecheck
+      - name: frontend build is up to date
+        working-directory: cmd/easynet/frontend
+        run: |
+          npm run build
+          git diff --exit-code -- dist
       - name: vet
         run: go vet ./...
       - name: test
