@@ -1,23 +1,25 @@
 # easynet 技术设计
 
+> 最后校准于 v0.6.1。若发布新版本后改动本文描述的事实，请同步更新此处的版本号。
+
 | 项目 | 内容 |
 |---|---|
 | 项目代号 | easynet（原名 epo，ePortal Auto Login） |
 | 平台范围 | Windows 10 / 11 x64 |
-| 适用网络 | 江西农业大学 `JXAU-Stu`（单校专用） |
-| 技术栈 | Go 1.22 + Wails v2.10.2 + 手写 HTML/CSS/JS（无 Node 构建） |
+| 适用网络 | 江西农业大学 东区 `JXAU-Stu`（Dr.COM ePortal）、本部 `JXAU` / `CMCC-JXAU`（锐捷 ePortal） |
+| 技术栈 | Go 1.22 + Wails v2.10.2 + Vite + TypeScript |
 | 分发 | GitHub Release（绿色版 zip + Inno Setup 安装包） |
 
 ---
 
 ## 1. 范围
 
-- 单一 SSID（`JXAU-Stu`）、单一 profile
-- Dr.COM ePortal 单一协议实现
+- 双校区：东区 `JXAU-Stu`（Dr.COM）与本部 `JXAU` / `CMCC-JXAU`（锐捷），由门户指纹自动选型
+- 两套门户协议实现，账号按校区分别保存，互不混用
 - 单个 `easynet.exe`：默认打开界面，带 `--daemon` 参数时无窗常驻 + 系统托盘
-- 自动登录、断线重连、开机自启、多账号管理
+- 自动登录、断线重连、开机自启、多账号管理、验证码识别（本部）、自动更新
 
-非目标：多校 / 多门户 / macOS / Linux / ARM64 / 多设备共享 / 绕过计费 / 遥测 / 自动更新。
+非目标：多校（江西农大以外） / macOS / Linux / ARM64 / 多设备共享 / 绕过计费 / 遥测。
 
 ---
 
@@ -189,7 +191,8 @@ wails build -platform windows/amd64 -webview2 browser -ldflags "-s -w"
 
 - 仅 Windows 10/11 x64，需要系统 WebView2
 - 无代码签名，SmartScreen 会提示「未知发布者」
-- 无自动更新，升级需手动覆盖
+- 自动更新为原地替换 exe：被安全软件拦截时会给出信任区指引与一键脚本，但仍需用户手动确认
+- 本部验证码为本地模板匹配：模板未覆盖的字形会识别失败，换图重试 4 次后仍需人工兜底
 - 凭据在网关侧以明文 HTTP 传输，这是学校网关的设计限制
 - 学校若开启验证码、无感知认证或 MAC 白名单，本工具可能失效
 

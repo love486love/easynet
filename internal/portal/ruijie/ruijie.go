@@ -42,6 +42,49 @@ type Client struct {
 	CaptchaDir string
 	// retryDelay 是可重试失败后的换图间隔；New 默认 2s，测试可调小。
 	retryDelay time.Duration
+	// pending 保存 OCR 连续失败时的会话与最后一张验证码，
+	// 供上层让用户人工输入（Code 7）。下一次 Login 会覆盖它。
+	pending *pendingLogin
+}
+
+// pendingLogin 是一次等待人工输入的登录上下文。
+type pendingLogin struct {
+	hp      string
+	query   string
+	referer string
+	png     []byte
+}
+
+// PendingCaptcha 返回等待人工输入的验证码原图；没有待处理会话时返回 nil。
+func (c *Client) PendingCaptcha() []byte {
+	if c.pending == nil {
+		return nil
+	}
+	return c.pending.png
+}
+
+// LoginWithCaptcha 用用户手动输入的验证码提交上一次 Login 留下的会话。
+// 不做重试：验证码可能已过期，失败时由上层提示用户重新发起。
+func (c *Client) LoginWithCaptcha(ctx context.Context, cred portal.Credential, code string) (portal.Result, error) {
+	p := c.pending
+	if p == nil {
+		return portal.Result{Code: 6, Message: "没有待处理的验证码会话"}, errors.New("无待处理验证码会话")
+	}
+	res, userIndex, _ := c.postLogin(ctx, p.hp, p.query, p.referer, cred, code)
+	if !res.OK {
+		return res, nil
+	}
+	_ = SaveSample(c.CaptchaDir, p.png, code)
+	c.pending = nil
+	if res.Message == "" {
+		res.Message = "登录成功"
+	}
+	if userIndex != "" {
+		u := fmt.Sprintf("http://%s/eportal/success.jsp?userIndex=%s&keepaliveInterval=0",
+			p.hp, url.QueryEscape(userIndex))
+		c.get(ctx, u, p.referer)
+	}
+	return res, nil
 }
 
 // New 返回默认客户端：整体超时 10s + Cookie Jar（门户 session 依赖 JSESSIONID）。
@@ -82,6 +125,7 @@ func (c *Client) Login(ctx context.Context, ep portal.Endpoint, cred portal.Cred
 	c.get(ctx, "http://"+hp+indexPath+"?"+query, referer)
 
 	var lastResult portal.Result
+	var ocrFailed bool
 	for attempt := 0; attempt < captchaAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return portal.Result{Code: 1, Message: "网络不可达"}, err
@@ -100,8 +144,13 @@ func (c *Client) Login(ctx context.Context, ep portal.Endpoint, cred portal.Cred
 			// 识别不出（缺模板/非预期内容/空白图）→ 存原图、换一张，绝不猜。
 			c.saveFailSample("ocr", png)
 			lastResult = portal.Result{Code: 5, Message: "验证码识别失败: " + rerr.Error()}
+			// 记住这张图：OCR 最终没成功时，上层可以让用户人工输入。
+			c.pending = &pendingLogin{hp: hp, query: query, referer: referer, png: png}
+			ocrFailed = true
 			continue
 		}
+		ocrFailed = false
+		c.pending = nil
 
 		res, userIndex, retryable := c.postLogin(ctx, hp, query, referer, cred, code)
 		if res.OK {
@@ -127,6 +176,10 @@ func (c *Client) Login(ctx context.Context, ep portal.Endpoint, cred portal.Cred
 			return portal.Result{Code: 1, Message: "网络不可达"}, ctx.Err()
 		case <-time.After(c.retryDelay):
 		}
+	}
+	// 最后一轮仍是识别失败，且手里有原图：交给上层让用户人工输入（Code 7）。
+	if ocrFailed && c.pending != nil {
+		return portal.Result{Code: 7, Message: "验证码识别连续失败，需要手动输入"}, nil
 	}
 	if lastResult.Message == "" {
 		lastResult.Message = "多次尝试未成功"
