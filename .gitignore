@@ -5,7 +5,7 @@ easynet-log-*.txt
 *.har
 private/
 
-# 构建产物（注意 dist/ 只排除仓库根目录，frontend/dist 是手写界面源码必须入库）
+# 构建产物（frontend/dist 由 Vite 生成，但 go:embed 与 CI 的 go build 依赖它，故入库）
 /build/
 bin/
 /dist/

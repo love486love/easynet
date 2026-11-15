@@ -27,12 +27,19 @@ $env:GOPATH = "<工作区>\.tools\gopath"; $env:GOPROXY = "https://goproxy.cn,di
 cd <工作区>\epo
 gofmt -l .                 # CI 会挡未格式化文件；-w 修复
 go vet ./...
-go test ./...              # 13 包，全绿才可提交
+go test ./...              # 20 包，全绿才可提交
 cd cmd\easynet
 wails build                # 产物：build\bin\easynet.exe（cwd 必须是 cmd/easynet）
+
+# 前端（源码 frontend/src，产物 frontend/dist 必须提交）
+cd frontend
+npm install                # 首次或依赖变更后
+npm run build              # vite build → dist
+npm run typecheck          # tsc --noEmit，CI 会跑
+npm run dev                # 本地热更新预览
 ```
 
-发布：`git tag vX.Y.Z && git push origin main && git push origin vX.Y.Z` → tag 触发 `release.yml`（构建+安装包+5 资产），push 触发 `ci.yml`（gofmt+test+build）。用 `gh run list` / `gh run watch <id>` 盯进度。
+发布：`git tag vX.Y.Z && git push origin main && git push origin vX.Y.Z` → tag 触发 `release.yml`（构建+安装包+5 资产），push 触发 `ci.yml`（前端 typecheck 与产物一致性、gofmt、vet、test、build）。用 `gh run list` / `gh run watch <id>` 盯进度。
 
 ## 3. 目录结构
 
@@ -42,7 +49,11 @@ epo/
 │   ├── app.go              #   Wails API（Status/Login/Accounts/Campus/SetCampus...）
 │   ├── update.go           #   检查更新/下载/替换（probeSwap 预检 + helper 脚本）
 │   ├── daemon.go           #   RunDaemon：状态机 + 登录链路装配
-│   └── frontend/dist/      #   零构建前端：index.html + style.css + app.js（go:embed）
+│   └── frontend/           #   前端（Vite + TypeScript）
+│       ├── index.html      #     入口
+│       ├── src/main.ts     #     全部界面逻辑（旧 app.js 迁移而来）
+│       ├── src/style.css   #     主题与样式
+│       └── dist/           #     构建产物，go:embed all:frontend/dist（需提交）
 ├── internal/
 │   ├── portal/drcom/       # 东区 Dr.COM dr1003 协议
 │   ├── portal/ruijie/      # 本部锐捷协议 + 验证码 OCR（captcha.go，testdata/ 4 真图）
@@ -76,8 +87,12 @@ epo/
 | `gh release view --jq` 表达式带双引号在 PS5 拆参 | 去掉 --jq 用默认表格输出 |
 | 校园网 github.com:443 时断时续 | push 前 `Test-NetConnection github.com -Port 443`；api.github.com 通常可用 |
 | gofmt 不过挡 CI | 提交前必跑 `gofmt -l .` |
-| 凭据文件绝不入库 | `.gitignore` 已挡 `*.har` `*.log`；HAR/日志/探针报告在仓库目录时**不要 git add** |
+| 凭据文件绝不入库 | `.gitignore` 已挡 `*.har`、`easynet-log-*.txt`、`benbu-probe-report.txt` |
 | 中文验证 UTF-8 检查 exe 内嵌 | 用 `[Text.Encoding]::UTF8.GetString`（ASCII 解码中文不可靠） |
+| Vite 8 默认用 oxc 压缩 | 不要写 `minify:'esbuild'`，否则报 `transformWithEsbuild` 缺失 |
+| PS 双引号串里的 `$` 会被当变量展开 | 用脚本生成代码会静默写坏（如 `$(id)` 变空）；改完必须跑 `npm run typecheck` 或 `go build` 校验 |
+| 前端改完忘记构建 | `dist` 是入库产物；CI 会跑 `npm run build` + `git diff --exit-code -- dist` 挡住过期产物 |
+| PS 写文件默认带 BOM | `Set-Content -Encoding UTF8` 会给 `index.html` 加 BOM，`<!DOCTYPE>` 前有不可见字符会让浏览器进 **quirks mode**，整套盒模型错乱、界面整体被裁；必须用 `[IO.File]::WriteAllText($p,$t,(New-Object Text.UTF8Encoding($false)))` |
 
 ## 6. 真机测试工具
 
@@ -88,8 +103,9 @@ epo/
 
 ## 7. 发布检查表
 
-1. `gofmt -l .` 空 + `go vet ./...` + `go test ./...` 全绿
-2. 版本号 9 处同步：`version.go`、`wails.json`、`easynet.iss`（注释+define）、`index.html`（verBadge+about-ver）、`README`（当前版本行+roadmap）、`RELEASE_NOTES.md`（重写）
-3. 公众文案交用户审阅
-4. commit（指定文件，排除日志/HAR/报告）→ `git tag vX.Y.Z` → push main + tag
-5. `gh run list` 盯 release+ci 双绿 → `gh release view` 核对 5 资产（exe/setup/zip/sha256/checksums）
+1. `gofmt -l .` 空 + `go vet ./...` + `go test ./...` 全绿；前端 `npm run typecheck` 无错
+2. 前端产物最新：`npm run build` 后 `git diff --exit-code -- dist` 无变化
+3. 版本号 11 处同步：`version.go`、`wails.json`、`easynet.iss`（注释+define）、`index.html`（verBadge+about-ver）、`README`（当前版本行+roadmap）、`RELEASE_NOTES.md`（重写）
+4. 公众文案交用户审阅
+5. commit（指定文件，排除日志/HAR/报告/node_modules）→ `git tag vX.Y.Z` → push main + tag
+6. `gh run list` 盯 release+ci 双绿 → `gh release view` 核对 5 资产（exe/setup/zip/sha256/checksums）
