@@ -1,3 +1,17 @@
+import './style.css'
+
+// 迁移阶段：DOM 取元素先用 any 兜底（原 JS 行为不变），类型收窄留给后续类型化步骤。
+const $ = (id: string): any => document.getElementById(id)
+const $$ = (sel: string): any => document.querySelectorAll(sel)
+const $q = (sel: string): any => document.querySelector(sel)
+
+declare global {
+  interface Window {
+    go: any
+    runtime: any
+  }
+}
+
 const App = () => window.go && window.go.main && window.go.main.App;
 const RT = () => window.runtime;
 
@@ -20,7 +34,7 @@ function resolveTheme(mode) {
 }
 
 function updateThemeSeg() {
-  const seg = document.getElementById('themeSeg');
+  const seg = $('themeSeg');
   if (!seg) return;
   seg.querySelectorAll('.seg-item').forEach(function (el) {
     el.classList.toggle('on', el.dataset.mode === themeMode);
@@ -31,7 +45,7 @@ function applyTheme(mode) {
   themeMode = (mode === 'light' || mode === 'dark') ? mode : 'auto';
   const m = resolveTheme(themeMode);
   document.body.dataset.theme = m;
-  const btn = document.getElementById('themeBtn');
+  const btn = $('themeBtn');
   if (btn) {
     btn.title = m === 'light' ? '切换到深色' : '切换到浅色';
     btn.setAttribute('aria-checked', m === 'light' ? 'true' : 'false');
@@ -63,25 +77,25 @@ function toggleTheme() {
   }
 })();
 
-document.querySelectorAll('.nav-item').forEach(el => {
+$$('.nav-item').forEach(el => {
   el.onclick = () => {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    $$('.nav-item').forEach(n => n.classList.remove('active'));
     el.classList.add('active');
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.getElementById('page-' + el.dataset.page).classList.add('active');
+    $$('.page').forEach(p => p.classList.remove('active'));
+    $('page-' + el.dataset.page).classList.add('active');
     if (el.dataset.page === 'logs') loadLogs();
   };
 });
 
-function setMsg(text, ok) {
-  const el = document.getElementById('msg');
+function setMsg(text: string, ok?: boolean) {
+  const el = $('msg');
   el.textContent = text;
   el.className = 'msg ' + (ok === true ? 'ok' : ok === false ? 'bad' : '');
 }
 
 let toastTimer = null;
 function toast(text, ok) {
-  let el = document.getElementById('toast');
+  let el = $('toast');
   if (!el) {
     el = document.createElement('div');
     el.id = 'toast';
@@ -94,33 +108,33 @@ function toast(text, ok) {
 }
 
 function renderState(s) {
-  const dot = document.getElementById('dot');
-  const text = document.getElementById('stateText');
-  const sub = document.getElementById('stateSub');
+  const dot = $('dot');
+  const text = $('stateText');
+  const sub = $('stateSub');
   dot.className = 'dot ' + (s.state || '');
   if (s.state === 'online') { text.textContent = '已连接'; sub.textContent = '网络认证正常'; }
   else if (s.state === 'offline') { text.textContent = '未认证'; sub.textContent = '需要登录校园网'; }
   else { text.textContent = s.ssid ? '状态未知' : '未连接 Wi-Fi'; sub.textContent = s.message || '无法判断网络状态'; }
 
-  const detail = document.getElementById('stateDetail');
+  const detail = $('stateDetail');
   if (detail) {
     detail.textContent = s.detail || '';
     detail.style.display = s.detail ? 'block' : 'none';
   }
 
-  document.getElementById('ssid').textContent = s.ssid || '—';
-  document.getElementById('ipv4').textContent = s.ipv4 || '—';
-  document.getElementById('gateway').textContent = s.gateway || '—';
-  document.getElementById('gwmac').textContent = s.gateway_mac || '（未取到）';
-  document.getElementById('mac').textContent = (s.mac || '—') + (s.random_mac ? '（随机）' : '');
-  document.getElementById('cred').innerHTML =
+  $('ssid').textContent = s.ssid || '—';
+  $('ipv4').textContent = s.ipv4 || '—';
+  $('gateway').textContent = s.gateway || '—';
+  $('gwmac').textContent = s.gateway_mac || '（未取到）';
+  $('mac').textContent = (s.mac || '—') + (s.random_mac ? '（随机）' : '');
+  $('cred').innerHTML =
     '<span class="pill ' + (s.has_cred ? 'ok' : 'bad') + '">' + (s.has_cred ? '账号已保存' : '账号未保存') + '</span>' +
     '<span class="pill ' + (s.has_trust ? 'ok' : '') + '">' + (s.has_trust ? '网关已信任' : '网关未记录') + '</span>';
-  document.getElementById('credHint').style.display = s.has_cred ? 'none' : 'flex';
+  $('credHint').style.display = s.has_cred ? 'none' : 'flex';
 }
 
 function goAccount() {
-  document.querySelector('.nav-item[data-page="account"]').click();
+  $q('.nav-item[data-page="account"]').click();
 }
 
 // 实时网速：每秒取一次累计字节做差分（App.Counters → 默认路由网卡），
@@ -141,9 +155,9 @@ function fmtBytes(n) {
   return Math.round(n) + ' B';
 }
 function setRateNum(id, r) {
-  const el = document.getElementById(id);
+  const el = $(id);
   if (el) el.textContent = r.v;
-  const unit = document.getElementById(id + 'U');
+  const unit = $(id + 'U');
   if (unit) unit.textContent = r.u;
 }
 async function loadNetRate() {
@@ -163,7 +177,7 @@ async function loadNetRate() {
 
     setRateNum('rateDown', fmtRate(d));
     setRateNum('rateUp', fmtRate(u));
-    const st = document.getElementById('rateStats');
+    const st = $('rateStats');
     if (st) {
       st.textContent = '本机累计 ↓ ' + fmtBytes(c.in) + '  ↑ ' + fmtBytes(c.out) +
         '   ｜   会话峰值 ↓ ' + fmtBytes(netPeak.d) + '/s';
@@ -177,7 +191,7 @@ async function loadNetRate() {
 
 // drawRateChart 画最近 60 秒曲线：下行渐变面积 + 上行虚线，随主题取色。
 function drawRateChart() {
-  const cv = document.getElementById('rateChart');
+  const cv = $('rateChart');
   if (!cv || !cv.getContext) return;
   const dpr = window.devicePixelRatio || 1;
   const w = cv.clientWidth || 440, h = cv.clientHeight || 76;
@@ -238,19 +252,19 @@ async function loadDaemon() {
   try {
     const d = await App().Daemon();
     const running = !!d.running;
-    const dot = document.getElementById('dDot');
+    const dot = $('dDot');
     dot.className = 'dot ' + (running ? (d.state === 'online' ? 'online' : '') : 'offline');
-    document.getElementById('dTitle').textContent = running ? '后台守护运行中' : '后台守护未运行';
+    $('dTitle').textContent = running ? '后台守护运行中' : '后台守护未运行';
     let sub = running ? '已自动维持在线，关闭窗口不影响' : '关闭窗口后不会自动重连';
     if (d.message) sub = d.message;
-    document.getElementById('dSub').textContent = sub;
-    document.getElementById('dSwitch').classList.toggle('on', !!(await App().DaemonEnabled()));
+    $('dSub').textContent = sub;
+    $('dSwitch').classList.toggle('on', !!(await App().DaemonEnabled()));
   } catch (e) { }
 }
 
 async function toggleDaemon() {
   if (!App()) return;
-  const sw = document.getElementById('dSwitch');
+  const sw = $('dSwitch');
   const on = !sw.classList.contains('on');
   sw.style.pointerEvents = 'none';
   setMsg(on ? '正在开启守护…' : '正在关闭守护…');
@@ -289,7 +303,7 @@ async function loadAccounts() {
 // 双列渲染：东区/本部各一个账号列表，行点击 = 载入编辑器 + 设为该校区使用中。
 function renderAccLists() {
   ['dongqu', 'benbu'].forEach(campus => {
-    const box = document.getElementById('accList' + (campus === 'dongqu' ? 'Dongqu' : 'Benbu'));
+    const box = $('accList' + (campus === 'dongqu' ? 'Dongqu' : 'Benbu'));
     if (!box) return;
     box.innerHTML = '';
     const list = accountsCache.filter(a => a.campus === campus);
@@ -328,44 +342,44 @@ function renderAccLists() {
 
 function renderEditor() {
   const a = accountsCache.find(x => x.username === selectedUser);
-  const label = document.getElementById('editorLabel');
-  const title = document.getElementById('editorTitle');
-  const del = document.getElementById('delBtn');
-  const campusSel = document.getElementById('editorCampus');
+  const label = $('editorLabel');
+  const title = $('editorTitle');
+  const del = $('delBtn');
+  const campusSel = $('editorCampus');
   if (a) {
     const cname = CAMPUS_NAMES[a.campus] || '东区';
     label.textContent = cname + '账号' + (a.current ? ' · 使用中' : '');
     title.textContent = a.username + ' · ' + carrierName(a.carrier);
     del.style.display = 'inline-flex';
-    document.getElementById('user').value = a.username;
-    document.getElementById('carrier').value = a.carrier || 'cmcc';
+    $('user').value = a.username;
+    $('carrier').value = a.carrier || 'cmcc';
     campusSel.value = a.campus || 'dongqu';
   } else {
     if (!campusSel.value) campusSel.value = 'dongqu';
     label.textContent = '新增' + (CAMPUS_NAMES[campusSel.value] || '东区') + '账号';
     title.textContent = '填写学号、密码与运营商';
     del.style.display = 'none';
-    document.getElementById('user').value = '';
-    document.getElementById('carrier').value = 'cmcc';
+    $('user').value = '';
+    $('carrier').value = 'cmcc';
   }
-  document.getElementById('pass').value = '';
+  $('pass').value = '';
 }
 
 function newAccount(campus) {
   selectedUser = '';
-  document.getElementById('editorCampus').value = campus || 'dongqu';
+  $('editorCampus').value = campus || 'dongqu';
   renderEditor();
-  document.getElementById('user').focus();
+  $('user').focus();
 }
 
 // 校区下拉变更时只刷新标题，不动已填内容。
 function updateCampusLabel() {
-  const campus = document.getElementById('editorCampus').value || 'dongqu';
-  document.getElementById('editorLabel').textContent = '新增' + (CAMPUS_NAMES[campus] || '东区') + '账号';
+  const campus = $('editorCampus').value || 'dongqu';
+  $('editorLabel').textContent = '新增' + (CAMPUS_NAMES[campus] || '东区') + '账号';
 }
 
 async function selectAccount(username) {
-  const el = document.getElementById('credMsg');
+  const el = $('credMsg');
   try {
     const msg = await App().SelectAccount(username);
     selectedUser = username;
@@ -382,7 +396,7 @@ async function deleteCurrent() {
   const a = accountsCache.find(x => x.username === selectedUser);
   if (!a) return;
   if (!confirm('确定删除账号 ' + a.username + '？')) return;
-  const el = document.getElementById('credMsg');
+  const el = $('credMsg');
   try {
     const msg = await App().DeleteAccount(a.username);
     el.textContent = msg;
@@ -397,7 +411,7 @@ async function deleteCurrent() {
 
 /* ---------- 校区切换（右上角两段式，点击滑动） ---------- */
 function markCampusSide(active) {
-  const seg = document.getElementById('campusSeg');
+  const seg = $('campusSeg');
   if (!seg) return;
   seg.classList.toggle('at-benbu', active === 'benbu');
   seg.querySelectorAll('.campus-seg-item').forEach(el => {
@@ -412,7 +426,7 @@ async function loadCampus() {
     // 指示块优先跟随实际连接（门户由网络决定）；未连校园网时显示记忆的偏好。
     const at = c.connected || c.prefer || 'dongqu';
     markCampusSide(at);
-    const note = document.getElementById('campusNote');
+    const note = $('campusNote');
     if (note) {
       if (c.connected) {
         note.textContent = '已连接' + CAMPUS_NAMES[c.connected] + ' · ' + c.ssid;
@@ -426,7 +440,7 @@ async function loadCampus() {
       }
     }
     // 设置页「自动连接校园 Wi-Fi」文案跟随滑条所选校区。
-    const wd = document.getElementById('wifiDesc');
+    const wd = $('wifiDesc');
     if (wd) {
       const prefer = c.prefer || 'dongqu';
       wd.textContent = '守护发现没连校园网时，自动连回' + CAMPUS_NAMES[prefer] +
@@ -449,14 +463,14 @@ async function setCampus(campus) {
 
 /* ---------- 账号折叠面板 ---------- */
 function toggleFold(campus) {
-  const el = document.getElementById(campus === 'dongqu' ? 'foldDongqu' : 'foldBenbu');
+  const el = $(campus === 'dongqu' ? 'foldDongqu' : 'foldBenbu');
   if (el) el.classList.toggle('open');
 }
 
 // 头部计数徽标：N 个 · 使用中
 function renderFoldCounts() {
   const set = (id, campus) => {
-    const el = document.getElementById(id);
+    const el = $(id);
     if (!el) return;
     const list = accountsCache.filter(a => a.campus === campus);
     const cur = list.find(a => a.current);
@@ -479,8 +493,8 @@ async function refresh() {
   await loadCampus();
 }
 
-function setLogMsg(text, ok) {
-  const el = document.getElementById('logMsg');
+function setLogMsg(text: string, ok?: boolean) {
+  const el = $('logMsg');
   el.textContent = text || '';
   el.className = 'msg ' + (ok === true ? 'ok' : ok === false ? 'bad' : '');
 }
@@ -510,7 +524,7 @@ async function loadLogs() {
   if (!App()) return;
   try {
     const lines = await App().Logs();
-    const pre = document.getElementById('logs');
+    const pre = $('logs');
     pre.textContent = (lines || []).join('\n') || '（暂无日志）';
     pre.scrollTop = pre.scrollHeight;
   } catch (e) { }
@@ -518,7 +532,7 @@ async function loadLogs() {
 
 async function doLogin() {
   if (!App()) return;
-  const btn = document.getElementById('loginBtn');
+  const btn = $('loginBtn');
   btn.disabled = true;
   setMsg('正在认证…');
   try {
@@ -534,11 +548,11 @@ async function doLogin() {
 
 async function saveCred() {
   if (!App()) return;
-  const el = document.getElementById('credMsg');
-  const username = document.getElementById('user').value.trim();
-  const password = document.getElementById('pass').value;
-  const carrier = document.getElementById('carrier').value;
-  const campus = document.getElementById('editorCampus').value || 'dongqu';
+  const el = $('credMsg');
+  const username = $('user').value.trim();
+  const password = $('pass').value;
+  const carrier = $('carrier').value;
+  const campus = $('editorCampus').value || 'dongqu';
   if (!username || !password) {
     el.textContent = '账号和密码不能为空';
     el.className = 'msg bad';
@@ -548,10 +562,10 @@ async function saveCred() {
     const msg = await App().SaveCred(username, password, carrier, campus);
     el.textContent = msg;
     el.className = 'msg ok';
-    document.getElementById('pass').value = '';
+    $('pass').value = '';
     selectedUser = username;
     // 确保目标校区面板展开，保存后能立刻看到新账号。
-    const fold = document.getElementById(campus === 'dongqu' ? 'foldDongqu' : 'foldBenbu');
+    const fold = $(campus === 'dongqu' ? 'foldDongqu' : 'foldBenbu');
     if (fold) fold.classList.add('open');
     await refresh();
     // 守护开关默认开启：首次保存账号后自动把守护拉起来，不必再手动点一次。
@@ -568,7 +582,7 @@ async function loadAutostart() {
   if (!App()) return;
   try {
     const s = await App().Autostart();
-    document.getElementById('autoSwitch').classList.toggle('on', !!s.enabled);
+    $('autoSwitch').classList.toggle('on', !!s.enabled);
   } catch (e) { }
 }
 
@@ -576,13 +590,13 @@ async function loadWifiAuto() {
   if (!App()) return;
   try {
     const on = !!(await App().WifiAutoEnabled());
-    document.getElementById('wifiSwitch').classList.toggle('on', on);
+    $('wifiSwitch').classList.toggle('on', on);
   } catch (e) { }
 }
 
 async function toggleWifiAuto() {
   if (!App()) return;
-  const sw = document.getElementById('wifiSwitch');
+  const sw = $('wifiSwitch');
   const next = !sw.classList.contains('on');
   sw.classList.toggle('on', next); // 先给视觉反馈，再等后端
   try {
@@ -597,7 +611,7 @@ async function toggleWifiAuto() {
 
 async function toggleAutostart() {
   if (!App()) return;
-  const sw = document.getElementById('autoSwitch');
+  const sw = $('autoSwitch');
   const next = !sw.classList.contains('on');
   sw.classList.toggle('on', next);
   try {
@@ -614,13 +628,13 @@ let updateInfo = null;
 
 async function checkUpdate(silent) {
   if (!App()) return;
-  const badge = document.getElementById('verBadge');
-  const msg = document.getElementById('updateMsg');
-  const pill = document.getElementById('updatePill');
-  const st = document.getElementById('updateState');
-  const nums = document.getElementById('updateNums');
-  const notes = document.getElementById('updateNotes');
-  const btn = document.getElementById('updateBtn');
+  const badge = $('verBadge');
+  const msg = $('updateMsg');
+  const pill = $('updatePill');
+  const st = $('updateState');
+  const nums = $('updateNums');
+  const notes = $('updateNotes');
+  const btn = $('updateBtn');
 
   if (pill) { pill.textContent = '检查中'; pill.classList.remove('on'); }
   if (st && !silent) st.textContent = '正在检查最新版本…';
@@ -680,11 +694,11 @@ async function checkUpdate(silent) {
 
 async function doUpdate() {
   if (!App()) return;
-  const btn = document.getElementById('updateBtn');
-  const wrap = document.getElementById('updateProgress');
-  const fill = document.getElementById('updateFill');
-  const pctEl = document.getElementById('updatePct');
-  const speedEl = document.getElementById('updateSpeed');
+  const btn = $('updateBtn');
+  const wrap = $('updateProgress');
+  const fill = $('updateFill');
+  const pctEl = $('updatePct');
+  const speedEl = $('updateSpeed');
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = '准备下载…';
@@ -707,11 +721,11 @@ async function doUpdate() {
 
 if (window.runtime && window.runtime.EventsOn) {
   window.runtime.EventsOn('update-progress', function (d) {
-    const wrap = document.getElementById('updateProgress');
-    const fill = document.getElementById('updateFill');
-    const pctEl = document.getElementById('updatePct');
-    const speedEl = document.getElementById('updateSpeed');
-    const btn = document.getElementById('updateBtn');
+    const wrap = $('updateProgress');
+    const fill = $('updateFill');
+    const pctEl = $('updatePct');
+    const speedEl = $('updateSpeed');
+    const btn = $('updateBtn');
     if (!wrap) return;
     wrap.hidden = false;
     const pct = Math.max(0, Math.min(100, (d && d.pct) || 0));
@@ -731,7 +745,7 @@ function onVersionClick() {
     RT() && RT().BrowserOpenURL(updateInfo.url);
     return;
   }
-  document.querySelector('.nav-item[data-page="about"]').click();
+  $q('.nav-item[data-page="about"]').click();
 }
 
 /* ---------- 新手引导 ---------- */
@@ -775,20 +789,20 @@ function nwClock(d) {
 }
 
 function updateNetWindow() {
-  const box = document.getElementById('netWindow');
+  const box = $('netWindow');
   if (!box) return;
   const now = new Date();
   const w = nwWindow(now);
   box.classList.toggle('offline', w.offline);
-  document.getElementById('nwIcon').innerHTML = w.offline ? NW_MOON : NW_SUN;
-  document.getElementById('nwTitle').textContent = w.offline ? '断网中' : '可上网';
-  const total = w.end - w.start;
-  const pct = total > 0 ? ((now - w.start) / total) * 100 : 0;
-  document.getElementById('nwFill').style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%';
-  document.getElementById('nwRemain').textContent = w.offline
-    ? nwFmt(w.end - now) + '后恢复'
-    : '距断网 ' + nwFmt(w.end - now);
-  document.getElementById('nwEnd').textContent = w.offline
+  $('nwIcon').innerHTML = w.offline ? NW_MOON : NW_SUN;
+  $('nwTitle').textContent = w.offline ? '断网中' : '可上网';
+  const total = w.end.getTime() - w.start.getTime();
+  const pct = total > 0 ? ((now.getTime() - w.start.getTime()) / total) * 100 : 0;
+  $('nwFill').style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%';
+  $('nwRemain').textContent = w.offline
+    ? nwFmt(w.end.getTime() - now.getTime()) + '后恢复'
+    : '距断网 ' + nwFmt(w.end.getTime() - now.getTime());
+  $('nwEnd').textContent = w.offline
     ? '06:00 恢复上网'
     : nwClock(w.end) + ' 断网';
 }
@@ -842,7 +856,7 @@ let tutIndex = 0;
 
 function startTutorial() {
   tutIndex = 0;
-  document.getElementById('tutOverlay').hidden = false;
+  $('tutOverlay').hidden = false;
   showTutorialStep(0);
   // 一开始播放就记录，中途关闭窗口也不会再次自动弹出
   if (App() && App().MarkTutorialDone) {
@@ -856,17 +870,17 @@ function showTutorialStep(i) {
   const s = steps[i];
 
   if (s.page) {
-    const nav = document.querySelector('.nav-item[data-page="' + s.page + '"]');
+    const nav = $q('.nav-item[data-page="' + s.page + '"]');
     if (nav) nav.click();
   }
 
-  document.getElementById('tutStep').textContent = 'STEP ' + (i + 1) + ' / ' + steps.length;
-  document.getElementById('tutTitle').textContent = s.title;
-  document.getElementById('tutText').textContent = s.text;
-  document.getElementById('tutPrev').style.visibility = i === 0 ? 'hidden' : 'visible';
-  document.getElementById('tutNext').textContent = i === steps.length - 1 ? '开始使用' : '下一步';
+  $('tutStep').textContent = 'STEP ' + (i + 1) + ' / ' + steps.length;
+  $('tutTitle').textContent = s.title;
+  $('tutText').textContent = s.text;
+  $('tutPrev').style.visibility = i === 0 ? 'hidden' : 'visible';
+  $('tutNext').textContent = i === steps.length - 1 ? '开始使用' : '下一步';
 
-  const dots = document.getElementById('tutDots');
+  const dots = $('tutDots');
   dots.innerHTML = '';
   steps.forEach((_, idx) => {
     const d = document.createElement('span');
@@ -874,10 +888,10 @@ function showTutorialStep(i) {
     dots.appendChild(d);
   });
 
-  const spot = document.getElementById('tutSpot');
-  const dim = document.getElementById('tutDim');
-  const card = document.getElementById('tutCard');
-  const el = s.target ? document.querySelector(s.target) : null;
+  const spot = $('tutSpot');
+  const dim = $('tutDim');
+  const card = $('tutCard');
+  const el = s.target ? $q(s.target) : null;
 
   if (el) {
     const r = el.getBoundingClientRect();
@@ -912,7 +926,7 @@ function prevTutorial() {
 }
 
 function endTutorial() {
-  document.getElementById('tutOverlay').hidden = true;
+  $('tutOverlay').hidden = true;
 }
 
 async function maybeStartTutorial() {
@@ -924,7 +938,7 @@ async function maybeStartTutorial() {
 }
 
 document.addEventListener('keydown', function (e) {
-  if (e.key === 'Escape' && !document.getElementById('tutOverlay').hidden) endTutorial();
+  if (e.key === 'Escape' && !$('tutOverlay').hidden) endTutorial();
 });
 
 refresh();
@@ -935,8 +949,8 @@ setInterval(loadNetRate, 1000);
 maybeStartTutorial();
 
 setTimeout(function () {
-  const badge = document.getElementById('verBadge');
-  const aboutVer = document.querySelector('.about-ver');
+  const badge = $('verBadge');
+  const aboutVer = $q('.about-ver');
   if (App() && App().Version) {
     // Version() 是 Wails 异步绑定（返回 Promise），直接拼串会显示
     // "v[object Promise]"——用 Promise.resolve 兼容同步与异步两种返回。
@@ -951,3 +965,9 @@ setTimeout(function () {
 
 updateNetWindow();
 setInterval(updateNetWindow, 30000);
+
+// 迁移到 ES module 后，index.html 的内联 onclick 需要显式挂到 window。
+Object.assign(window, { winMin, winMax, winClose, openRepo, openRelease, resolveTheme, updateThemeSeg, applyTheme, toggleTheme, setMsg, toast, renderState, goAccount, fmtRate, fmtBytes, setRateNum, loadNetRate, drawRateChart, rgba, loadDaemon, toggleDaemon, carrierName, loadAccounts, renderAccLists, renderEditor, newAccount, updateCampusLabel, selectAccount, deleteCurrent, markCampusSide, loadCampus, setCampus, toggleFold, renderFoldCounts, refresh, setLogMsg, exportLogs, openLogsDir, loadLogs, doLogin, saveCred, loadAutostart, loadWifiAuto, toggleWifiAuto, toggleAutostart, checkUpdate, doUpdate, onVersionClick, nwAt, nwWindow, nwFmt, nwClock, updateNetWindow, startTutorial, showTutorialStep, nextTutorial, prevTutorial, endTutorial, maybeStartTutorial })
+
+
+

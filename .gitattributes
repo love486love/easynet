@@ -5,3 +5,9 @@
 *.bat text eol=crlf
 *.ps1 text eol=crlf
 *.md text eol=lf
+# 前端源码与产物：保持 LF，确保 CI 的「产物一致性」校验不被行尾转换干扰
+*.ts text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
