@@ -47,7 +47,7 @@ type Credential struct {
 // Result 是一次认证操作的结构化结果。
 type Result struct {
 	OK      bool   // 是否成功
-	Code    int    // 见 docs/TECH_DESIGN.md §11 错误码
+	Code    int    // 错误码，见本文件下方的约定
 	Message string // 可直接展示的文案
 	RetCode int    // 服务端返回的 ret_code，仅用于诊断
 }
