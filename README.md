@@ -137,13 +137,11 @@ internal/
   trust/              网关 MAC 信任（TOFU）
   config/ state/      配置与状态快照
 packaging/            Inno Setup 脚本与绿色版卸载脚本
-docs/                 技术设计、实测报告、发布说明
+docs/                 发布说明与界面截图
 ```
 
 ## 文档
 
-- [技术设计](docs/TECH_DESIGN.md)
-- [M0 实测报告](docs/M0-REPORT.md)
 - [发布说明](docs/RELEASE_NOTES.md)
 
 ## 校验与安全

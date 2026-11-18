@@ -66,7 +66,7 @@ func looksLikePortal(body []byte) bool {
 	return false
 }
 
-// Judge 依据 docs/TECH_DESIGN.md §6.1 判定在线状态。
+// Judge 判定在线状态。
 //
 // expect 是探针地址在正常（已认证）状态下必然出现的正文片段。
 // 只要配置了 expect，2xx 就必须命中它才算在线——这是为了防住
