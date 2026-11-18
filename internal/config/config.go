@@ -72,7 +72,7 @@ const (
 )
 
 // Default 返回江西农业大学学生网的默认配置。
-// 与 docs/TECH_DESIGN.md §7 保持一致，并作为二进制内置 fallback。
+// 与实现约定保持一致，并作为二进制内置 fallback。
 func Default() Profile {
 	return Profile{
 		SchemaVersion: 1,

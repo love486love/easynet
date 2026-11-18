@@ -60,7 +60,7 @@ func (p LoginParams) Account() (string, error) {
 	return account, nil
 }
 
-// URL 按 docs/TECH_DESIGN.md §6.3 构造登录地址。
+// URL 按 ePortal 约定构造登录地址。
 func (p LoginParams) URL(ep portal.Endpoint) (string, error) {
 	if ep.Host == "" {
 		return "", fmt.Errorf("门户主机为空")
