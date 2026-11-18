@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/love486love/easynet/internal/app"
 	"github.com/love486love/easynet/internal/autostart"
 	"github.com/love486love/easynet/internal/config"
 	"github.com/love486love/easynet/internal/creds"
@@ -96,10 +97,8 @@ func NewApp() *App {
 
 	// 用户目录下的 profile.json 可覆盖内置配置（换校区、改门户网段等）；
 	// 文件缺失或格式不合法时回退内置默认值，保证界面照常可用。
-	prof := config.Default()
-	if p, loadErr := config.Load(filepath.Join(dir, "profile.json")); loadErr == nil {
-		prof = p
-	}
+	// 走 app.LoadProfile 与守护共用同一套查找顺序，避免两边读到不同配置。
+	prof, _ := app.LoadProfile("")
 
 	// 界面进程也要写日志：更新检查、下载、替换这些动作只发生在界面进程，
 	// 不记下来的话出了问题（例如替换失败）日志里一点痕迹都没有。
