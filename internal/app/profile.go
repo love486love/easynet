@@ -2,13 +2,17 @@
 package app
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/love486love/easynet/internal/config"
 )
 
-// LoadProfile 读取 profile：path 为空时使用 %LOCALAPPDATA%\easynet\config.json。
-// 配置缺失时回退到内置默认值，保证首次运行也能探针。
+// LoadProfile 读取 profile。
+//
+// path 为空时使用 %LOCALAPPDATA%\easynet\profile.json —— 与界面保存的配置
+// 是同一个文件。旧版本的守护读的是 config.json，若该文件存在而
+// profile.json 不存在则回退读取，避免升级后配置丢失。
 func LoadProfile(path string) (config.Profile, error) {
 	if path != "" {
 		return config.Load(path)
@@ -17,5 +21,11 @@ func LoadProfile(path string) (config.Profile, error) {
 	if err != nil {
 		return config.Default(), nil
 	}
-	return config.Load(filepath.Join(dir, "config.json"))
+	if _, err := os.Stat(filepath.Join(dir, "profile.json")); err == nil {
+		return config.Load(filepath.Join(dir, "profile.json"))
+	}
+	if _, err := os.Stat(filepath.Join(dir, "config.json")); err == nil {
+		return config.Load(filepath.Join(dir, "config.json"))
+	}
+	return config.Default(), nil
 }
