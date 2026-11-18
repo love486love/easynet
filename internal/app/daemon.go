@@ -211,21 +211,29 @@ func RunDaemon(profilePath string) error {
 	// 决定，按优先级逐个尝试（本部：JXAU 优先，不行再 CMCC-JXAU）。
 	// 失败后 1 分钟内不重复尝试，避免 Wi-Fi 关闭时日志刷屏。
 	var lastWiFiTry time.Time
-	targetSSIDs := append([]string{prof.Network.SSID}, prof.Network.ExtraSSIDs...)
-	preferSSIDs := prof.SSIDsForCampus(prof.Network.PreferCampus)
 	autoWiFi := func() {
 		if _, err := os.Stat(filepath.Join(dir, "wifi_auto")); err != nil {
 			return
 		}
 		ni, err := netinfo.Get()
-		if err != nil || ssidInList(ni.SSID, targetSSIDs) {
+		if err != nil {
+			return
+		}
+		// 界面切换校区会改写 profile：每轮用磁盘上的最新配置，
+		// 否则守护启动后一直按旧的优先校区回连（切了也不生效）。
+		cur := prof
+		if p, err := LoadProfile(profilePath); err == nil {
+			cur = p
+		}
+		targets := append([]string{cur.Network.SSID}, cur.Network.ExtraSSIDs...)
+		if ssidInList(ni.SSID, targets) {
 			return
 		}
 		if time.Since(lastWiFiTry) < time.Minute {
 			return
 		}
 		lastWiFiTry = time.Now()
-		for _, ssid := range preferSSIDs {
+		for _, ssid := range cur.SSIDsForCampus(cur.Network.PreferCampus) {
 			if err := netinfo.Connect(ssid); err != nil {
 				logger.Warn("自动连接校园 Wi-Fi 失败，尝试下一个", "ssid", ssid, "err", err)
 				continue
@@ -236,7 +244,14 @@ func RunDaemon(profilePath string) error {
 		}
 	}
 
-	logger.Info("守护启动", "profile", prof.ID, "ssid", prof.Network.SSID)
+	campus := "东区"
+	if prof.Network.PreferCampus == config.CampusBenbu {
+		campus = "本部"
+	}
+	// 打印偏好校区与真实回连目标：只打 profile/ssid 容易让人误以为仍在东区
+	// （profile 是配置 ID、ssid 是结构里的东区字段，都不代表当前选择）。
+	logger.Info("守护启动", "配置", prof.ID, "偏好校区", campus,
+		"回连目标", strings.Join(prof.SSIDsForCampus(prof.Network.PreferCampus), ","))
 	_ = state.Write(dir, state.Snapshot{State: "unknown", Message: "守护已启动", PID: os.Getpid()})
 	exitMessage = "守护已停止"
 
