@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -101,6 +102,66 @@ func New() *Client {
 
 func (c *Client) Name() string { return "ruijie-eportal" }
 
+// hijackProbeURL 是补抓跳转参数时使用的公网 HTTP 地址。
+// 未认证时 AC 会拦截任意 HTTP 并返回跳转页；已认证时会返回真实页面，
+// 提取不到 index.jsp，天然不会误判。用 IP 是为了绕开 DNS。
+const hijackProbeURL = "http://1.1.1.1/"
+
+// hijackClient 不跟随重定向：要读 AC 返回的 302 Location 与 200 跳转页。
+var hijackClient = &http.Client{
+	Timeout: 3 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
+// fetchQuery 在探针拿不到跳转参数时主动补抓：先请求门户根，
+// 再请求公网 IP 触发 AC 拦截。只接受指向本门户的跳转地址。
+func (c *Client) fetchQuery(ctx context.Context, hp string) string {
+	for _, raw := range []string{
+		"http://" + hp + "/",
+		"http://" + hp + indexPath,
+		hijackProbeURL,
+	} {
+		if q := c.tryFetchQuery(ctx, raw, hp); q != "" {
+			return q
+		}
+	}
+	return ""
+}
+
+func (c *Client) tryFetchQuery(ctx context.Context, raw, hp string) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := hijackClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	link := portal.FindIndexJSP(resp.Header.Get("Location"), body)
+	if link == "" {
+		return ""
+	}
+	u, err := url.Parse(link)
+	if err != nil || u.RawQuery == "" {
+		return ""
+	}
+	// 只接受本门户的跳转，避免被劫持到其他地址。
+	want := hp
+	if h, _, splitErr := net.SplitHostPort(hp); splitErr == nil {
+		want = h
+	}
+	if want != "" && !strings.EqualFold(u.Hostname(), want) {
+		return ""
+	}
+	return u.RawQuery
+}
+
 // Login 完成一次认证：
 //
 //  1. GET index.jsp?query 建立门户 session（JSESSIONID）；
@@ -111,14 +172,18 @@ func (c *Client) Name() string { return "ruijie-eportal" }
 //
 // 真伪复核交给上层 probe，本方法不重复探测。
 func (c *Client) Login(ctx context.Context, ep portal.Endpoint, cred portal.Credential) (portal.Result, error) {
+	hp := hostPort(ep.Host, ep.Port)
 	query := ep.Extra["rawquery"]
 	if query == "" {
-		// 没有劫持跳转就没有 queryString（登录必被拒），属本地可恢复问题。
-		return portal.Result{Code: 6, Message: "未获取门户重定向参数"},
-			errors.New("缺少 index.jsp query string，无法构造本部登录请求")
+		// 探针不可用时（开机 DNS 未就绪、未认证网络不解析域名）拿不到
+		// AC 的跳转参数。这里用 IP 直连补抓一次，不依赖 DNS。
+		query = c.fetchQuery(ctx, hp)
 	}
-
-	hp := hostPort(ep.Host, ep.Port)
+	if query == "" {
+		// 仍拿不到：属本地可恢复问题，提示用户手动触发认证页。
+		return portal.Result{Code: 6, Message: "未能获取门户跳转参数，请先用浏览器打开任意网页触发认证页后重试"},
+			errors.New("缺少 index.jsp query string，且门户未返回可解析的跳转地址")
+	}
 	referer := "http://" + hp + indexPath + "?" + query
 
 	// 建立门户 session（失败不阻断：部分部署不校验 session）。

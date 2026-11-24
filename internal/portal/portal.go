@@ -2,7 +2,31 @@
 // 上层（probe、daemon、cli）只依赖本包，不直接依赖 drcom 等实现。
 package portal
 
-import "context"
+import (
+	"context"
+	"regexp"
+)
+
+// maxHijackBody 是提取跳转地址时允许检查的正文上限。
+// 真页面（几十 KB）不可能是 AC 劫持页，超过上限直接放弃。
+const maxHijackBody = 8 << 10
+
+// reIndexJSP 匹配 AC 劫持页里的 index.jsp 跳转地址。
+// 本部锐捷实测：未认证时返回 200 + 511 字节 JS 跳转页，
+// 地址以单引号包裹的绝对 URL 出现在正文；部分部署走 302 Location。
+var reIndexJSP = regexp.MustCompile(`https?://[^'\s<>"]+index\.jsp\?[^'\s<>"]+`)
+
+// FindIndexJSP 从响应头 Location 或正文中提取 index.jsp 跳转地址。
+// 只做文本提取，不发请求，供 probe 与门户客户端共用。
+func FindIndexJSP(location string, body []byte) string {
+	if m := reIndexJSP.FindString(location); m != "" {
+		return m
+	}
+	if len(body) > maxHijackBody {
+		return ""
+	}
+	return reIndexJSP.FindString(string(body))
+}
 
 // State 表示当前上网认证状态。
 type State int

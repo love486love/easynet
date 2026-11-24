@@ -120,6 +120,63 @@ func TestParseLoginResponse(t *testing.T) {
 	}
 }
 
+// TestLoginFetchesQueryWhenMissing 覆盖「探针没拿到跳转参数」：
+// 登录器用 IP 直连门户根，从 AC 劫持页补出 index.jsp query 后完成登录。
+func TestLoginFetchesQueryWhenMissing(t *testing.T) {
+	var gotForm url.Values
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		// 模拟本部 AC：200 + 短 JS 跳转页（非 302）。
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, "<script>top.location.href='http://"+r.Host+
+			"/eportal/index.jsp?wlanuserip=1.2.3.4&nasip=aa';</script>")
+	})
+	mux.HandleFunc("/eportal/validcode", func(w http.ResponseWriter, r *http.Request) {
+		mockCaptcha(w)
+	})
+	mux.HandleFunc("/eportal/index.jsp", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "portal page")
+	})
+	mux.HandleFunc("/eportal/InterFace.do", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		gotForm = r.Form
+		_, _ = io.WriteString(w, `{"userIndex":"61616262","result":"success","message":"","forwordurl":null,"keepaliveInterval":0,"casFailErrString":null,"validCodeUrl":""}`)
+	})
+	mux.HandleFunc("/eportal/success.jsp", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "登录成功")
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("解析测试地址: %v", err)
+	}
+	port, _ := strconv.Atoi(u.Port())
+	// 关键：Extra 里没有 rawquery，模拟探针 DNS 失败。
+	ep := portal.Endpoint{
+		Host: u.Hostname(), Port: port,
+		Extra: map[string]string{"indexpath": "/eportal/index.jsp"},
+	}
+
+	res, err := New().Login(context.Background(), ep,
+		portal.Credential{Username: "20240001", Password: "test@pass1"})
+	if err != nil {
+		t.Fatalf("登录不应报错: %v", err)
+	}
+	if !res.OK {
+		t.Fatalf("应从劫持页补出参数并登录成功: %+v", res)
+	}
+	if got := gotForm.Get("queryString"); !strings.Contains(got, "wlanuserip") {
+		t.Errorf("queryString 应包含补抓到的 wlanuserip，实际 %q", got)
+	}
+}
+
 // mockCaptcha 返回可识别的内置验证码图（validcode-2.png = 2284）。
 func mockCaptcha(w http.ResponseWriter) {
 	raw, err := builtinFS.ReadFile("testdata/validcode-2.png")

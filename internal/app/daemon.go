@@ -102,35 +102,34 @@ func RunDaemon(profilePath string) error {
 	lastGatewayMAC := ""
 	lastMessage := ""
 
+	// 每轮读磁盘上的最新配置：界面切换校区后无需重启守护即可生效。
+	currentProfile := func() config.Profile {
+		if p, err := LoadProfile(profilePath); err == nil {
+			return p
+		}
+		return prof
+	}
+
 	loginFn := func(ctx context.Context, ev probe.Evidence) (portal.Result, error) {
+		cur := currentProfile()
+		plan := session.Plan(cur)
+
 		ni, niErr := netinfo.Get()
 		if niErr != nil {
 			return portal.Result{Code: 6, Message: niErr.Error()}, niErr
 		}
 
-		ep, warns := session.EndpointFromEvidence(prof, ev)
+		// 只解析本校区门户：另一校区的重定向一律忽略，绝不串校区登录。
+		ep, warns := session.EndpointForCampus(cur, ev)
 		for _, w := range warns {
 			logger.Warn("网关参数告警", "detail", w)
 		}
 
-		// 门户指纹选型：AC 拦截重定向指向 index.jsp 的是本部锐捷门户
-		// （10.255.240.8），其余保持东区 Dr.COM（dr1003）。
-		useRuijie := strings.Contains(ep.Extra["indexpath"], "index.jsp")
-		if !useRuijie && ep.Extra["indexpath"] == "" {
-			// Location 缺失时按当前 SSID 兜底（本部 SSID = ExtraSSIDs），
-			// 避免瞎猜成东区后朝不可达的 172.16.121.9:801 死超时。
-			useRuijie = ssidInList(ni.SSID, prof.Network.ExtraSSIDs)
-		}
-
-		// 东区账号只能连东区、本部账号只能连本部：按指纹取对应校区账号。
-		campus := creds.CampusDongqu
-		if useRuijie {
-			campus = creds.CampusBenbu
-		}
-		secret, serr := creds.LoadForCampus(dir, campus)
+		// 校区账号与协议都由选择决定，不再按探测指纹猜。
+		secret, serr := creds.LoadForCampus(dir, plan.Campus)
 		if serr != nil {
 			// 本地配置问题：走普通失败退避（间隔有上限），日志给出明确指引。
-			logger.Warn("校区账号缺失", "校区", campus, "err", serr)
+			logger.Warn("校区账号缺失", "校区", plan.Campus, "err", serr)
 			return portal.Result{Code: 6, Message: serr.Error()}, serr
 		}
 		cred := portal.Credential{
@@ -139,10 +138,10 @@ func RunDaemon(profilePath string) error {
 			Carrier:  secret.Carrier,
 		}
 		if cred.Carrier == "" {
-			cred.Carrier = prof.Login.Carrier
+			cred.Carrier = cur.Login.Carrier
 		}
 
-		if !useRuijie {
+		if !plan.UseRuijie {
 			// 探针不可用（例如开机时 DNS 尚未就绪）拿不到 302 参数，
 			// 用本机网卡信息补齐，避免登录请求带空 userip 被网关拒绝。
 			if ep.Extra["userip"] == "" {
@@ -154,16 +153,12 @@ func RunDaemon(profilePath string) error {
 		}
 
 		// 四项校验：SSID / 门户白名单 / 随机 MAC（仅告警）/ 网关 MAC 信任。
-		// 信任列表为空时只记录不阻断，避免首次使用被卡死。
-		allowedHosts := prof.Portal.AllowedHosts
-		if len(allowedHosts) == 0 {
-			allowedHosts = []string{prof.Portal.Host}
-		}
+		// 白名单只放本校区门户，任何跨校区地址都会被直接拒绝。
 		if gres, gerr := guard.Check(guard.Input{
-			TargetSSIDs:  append([]string{prof.Network.SSID}, prof.Network.ExtraSSIDs...),
+			TargetSSIDs:  plan.SSIDs,
 			CurrentSSID:  ni.SSID,
 			PortalHost:   ep.Host,
-			AllowedHosts: allowedHosts,
+			AllowedHosts: []string{plan.PortalHost},
 			GatewayMAC:   ni.GatewayMAC,
 			TrustedMACs:  trusted,
 			RandomMAC:    ni.RandomMAC,
@@ -178,15 +173,15 @@ func RunDaemon(profilePath string) error {
 		}
 
 		lastGatewayMAC = ni.GatewayMAC
-		logger.Info("发起登录", "门户", ep.Host, "协议", portalKind(useRuijie),
+		logger.Info("发起登录", "校区", plan.Campus, "门户", ep.Host, "协议", portalKind(plan.UseRuijie),
 			"账号", logx.MaskAccount(cred.Username), "userip", ep.Extra["userip"], "ssid", ni.SSID)
 		var client portal.Portal
-		if useRuijie {
+		if plan.UseRuijie {
 			rj := ruijie.New()
 			rj.CaptchaDir = filepath.Join(dir, "captcha")
 			client = rj
 		} else {
-			client = drcom.NewWithSuffixes(prof.Login.CarrierSuffixes)
+			client = drcom.NewWithSuffixes(cur.Login.CarrierSuffixes)
 		}
 		res, lerr := client.Login(ctx, ep, cred)
 		if lerr != nil {
@@ -206,9 +201,9 @@ func RunDaemon(profilePath string) error {
 		return res, lerr
 	}
 
-	// 自动连回校园 Wi-Fi：仅当开关文件存在、且当前不属于任一目标
-	// 校园网（东区/本部）时尝试，目标 SSID 由概览页滑条记录的优先校区
-	// 决定，按优先级逐个尝试（本部：JXAU 优先，不行再 CMCC-JXAU）。
+	// 自动连回校园 Wi-Fi：仅当开关文件存在、且当前不属于本校区目标
+	// 校园网时尝试，目标 SSID 由概览页滑条记录的优先校区决定。
+	// 校区硬隔离：选本部只回连本部 SSID，选东区只回连东区 SSID。
 	// 失败后 1 分钟内不重复尝试，避免 Wi-Fi 关闭时日志刷屏。
 	var lastWiFiTry time.Time
 	autoWiFi := func() {
@@ -221,37 +216,35 @@ func RunDaemon(profilePath string) error {
 		}
 		// 界面切换校区会改写 profile：每轮用磁盘上的最新配置，
 		// 否则守护启动后一直按旧的优先校区回连（切了也不生效）。
-		cur := prof
-		if p, err := LoadProfile(profilePath); err == nil {
-			cur = p
-		}
-		targets := append([]string{cur.Network.SSID}, cur.Network.ExtraSSIDs...)
-		if ssidInList(ni.SSID, targets) {
+		plan := session.Plan(currentProfile())
+		if ssidInList(ni.SSID, plan.SSIDs) {
 			return
 		}
 		if time.Since(lastWiFiTry) < time.Minute {
 			return
 		}
 		lastWiFiTry = time.Now()
-		for _, ssid := range cur.SSIDsForCampus(cur.Network.PreferCampus) {
+		for _, ssid := range plan.SSIDs {
 			if err := netinfo.Connect(ssid); err != nil {
 				logger.Warn("自动连接校园 Wi-Fi 失败，尝试下一个", "ssid", ssid, "err", err)
 				continue
 			}
-			logger.Info("已请求连接校园 Wi-Fi", "ssid", ssid)
+			logger.Info("已请求连接校园 Wi-Fi", "ssid", ssid, "校区", plan.Campus)
 			time.Sleep(3 * time.Second)
 			return
 		}
 	}
 
+	startPlan := session.Plan(prof)
 	campus := "东区"
-	if prof.Network.PreferCampus == config.CampusBenbu {
+	if startPlan.Campus == config.CampusBenbu {
 		campus = "本部"
 	}
 	// 打印偏好校区与真实回连目标：只打 profile/ssid 容易让人误以为仍在东区
 	// （profile 是配置 ID、ssid 是结构里的东区字段，都不代表当前选择）。
 	logger.Info("守护启动", "配置", prof.ID, "偏好校区", campus,
-		"回连目标", strings.Join(prof.SSIDsForCampus(prof.Network.PreferCampus), ","))
+		"回连目标", strings.Join(startPlan.SSIDs, ","),
+		"门户", startPlan.PortalHost)
 	_ = state.Write(dir, state.Snapshot{State: "unknown", Message: "守护已启动", PID: os.Getpid()})
 	exitMessage = "守护已停止"
 
@@ -293,27 +286,20 @@ func RunDaemon(profilePath string) error {
 		},
 		Probe: func(ctx context.Context) (portal.State, probe.Evidence, error) {
 			autoWiFi()
-			st, ev, perr := session.ProbeOnce(ctx, prof)
+			cur := currentProfile()
+			st, ev, perr := session.ProbeOnce(ctx, cur)
 
 			// 本部探针抖动防误判：网络差时 baidu/jxau 探针反复 timeout，
 			// 状态在在线/离线间横跳。SSID 处于本部时用门户权威接口
 			// getOnlineUserInfo 复核，以它为准（查询失败则维持原判定）。
-			if st != portal.StateOnline && ssidInList(netinfo.SSID(), prof.Network.ExtraSSIDs) {
-				host := ""
-				for _, h := range prof.Portal.AllowedHosts {
-					if !strings.EqualFold(h, prof.Portal.Host) {
-						host = h // 白名单里非东区门户的即本部锐捷门户
-						break
-					}
-				}
-				if host != "" {
-					cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
-					online := ruijie.CheckOnline(cctx, host, 80)
-					cancel()
-					if online {
-						logger.Info("探针判定不稳定，已按门户在线表复核为在线")
-						st, ev, perr = portal.StateOnline, probe.Evidence{}, nil
-					}
+			plan := session.Plan(cur)
+			if st != portal.StateOnline && plan.UseRuijie && ssidInList(netinfo.SSID(), plan.SSIDs) {
+				cctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+				online := ruijie.CheckOnline(cctx, plan.PortalHost, plan.PortalPort)
+				cancel()
+				if online {
+					logger.Info("探针判定不稳定，已按门户在线表复核为在线")
+					st, ev, perr = portal.StateOnline, probe.Evidence{}, nil
 				}
 			}
 
@@ -328,39 +314,23 @@ func RunDaemon(profilePath string) error {
 		Login: loginFn,
 		Log:   logger,
 		Stop:  func() bool { return state.StopRequested(dir) },
-		// SSID 判离线：已连任一目标校园网（东区/本部）3 次探不通即登录；
-		// 连别的网络则等待。
-		TargetSSIDs: append([]string{prof.Network.SSID}, prof.Network.ExtraSSIDs...),
+		// SSID 判离线：只认当前校区目标 SSID，3 次探不通即登录；
+		// 连的是另一校区的网络则视为非目标，不代持登录。
+		TargetSSIDs: func() []string { return session.Plan(currentProfile()).SSIDs },
 		CurrentSSID: netinfo.SSID,
-		// 门户可达预检：开机链路未就绪时（日志里的
-		// "socket operation unreachable" 场景）先等 TCP 能连上门户再登录。
-		// 跨校区：东区/本部门户都要探，任一可达即放行——否则在本部时
-		// 只探东区 172.16.121.9:801 永远不通，守护会一直卡在"门户尚未可达"。
+		// 门户可达预检：只探当前选中的校区门户，绝不探测另一校区。
+		// 开机链路未就绪时先等 TCP 能连上门户再登录，避免发注定失败的请求。
 		PortalReachable: func(ctx context.Context) bool {
-			type ep struct {
-				host string
-				port int
+			plan := session.Plan(currentProfile())
+			addr := net.JoinHostPort(plan.PortalHost, strconv.Itoa(plan.PortalPort))
+			cctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+			conn, err := (&net.Dialer{}).DialContext(cctx, "tcp", addr)
+			cancel()
+			if err != nil {
+				return false
 			}
-			var eps []ep
-			eps = append(eps, ep{prof.Portal.Host, prof.Portal.Port})
-			for _, h := range prof.Portal.AllowedHosts {
-				if h == prof.Portal.Host {
-					continue
-				}
-				// 白名单里非配置门户的默认端口：本部锐捷 10.255.240.8 走 80。
-				eps = append(eps, ep{h, 80})
-			}
-			for _, e := range eps {
-				addr := net.JoinHostPort(e.host, strconv.Itoa(e.port))
-				cctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-				conn, err := (&net.Dialer{}).DialContext(cctx, "tcp", addr)
-				cancel()
-				if err == nil {
-					_ = conn.Close()
-					return true
-				}
-			}
-			return false
+			_ = conn.Close()
+			return true
 		},
 		OnVerified: func() {
 			if lastGatewayMAC == "" {

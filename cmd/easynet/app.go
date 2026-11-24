@@ -283,25 +283,14 @@ func (a *App) Login() (string, error) {
 		return "当前已在线，无需登录", nil
 	}
 
-	ep, warns := session.EndpointFromEvidence(a.prof, ev)
-
-	// 与守护一致：按门户指纹选协议与对应校区账号（东区/本部各用各的）。
-	useRuijie := strings.Contains(ep.Extra["indexpath"], "index.jsp")
-	if !useRuijie && ep.Extra["indexpath"] == "" {
-		// Location 缺失时按当前 SSID 兜底（本部 SSID = ExtraSSIDs）。
-		if ni, nerr := netinfo.Get(); nerr == nil {
-			for _, s := range a.prof.Network.ExtraSSIDs {
-				if strings.EqualFold(ni.SSID, s) {
-					useRuijie = true
-					break
-				}
-			}
-		}
+	// 与守护一致：按用户选择的校区锁定门户与协议，不按探测指纹猜。
+	plan := session.Plan(a.prof)
+	ep, warns := session.EndpointForCampus(a.prof, ev)
+	for _, w := range warns {
+		a.logger().Warn("网关参数告警", "detail", w)
 	}
-	campus := creds.CampusDongqu
-	if useRuijie {
-		campus = creds.CampusBenbu
-	}
+	useRuijie := plan.UseRuijie
+	campus := plan.Campus
 	secret, err := creds.LoadForCampus(a.dir, campus)
 	if err != nil {
 		return "", err

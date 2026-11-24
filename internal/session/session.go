@@ -4,6 +4,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -46,12 +47,61 @@ func ProbeOnce(ctx context.Context, prof config.Profile) (portal.State, probe.Ev
 	return portal.StateUnknown, probe.Evidence{}, nil
 }
 
-// EndpointFromEvidence 从 302 的 Location 中解析网关地址与登录参数。
-// 参数缺失只告警不阻断：同类项目实测这些字段并非认证必填项。
-func EndpointFromEvidence(prof config.Profile, ev probe.Evidence) (portal.Endpoint, []string) {
+// CampusPlan 是选中校区的唯一登录目标：门户地址、协议与 SSID 都只来自本校区。
+// 校区之间硬隔离——选本部不碰东区地址，选东区不碰本部地址。
+type CampusPlan struct {
+	Campus     string   // dongqu / benbu
+	PortalHost string   // 本校区门户主机
+	PortalPort int      // 本校区门户端口
+	SSIDs      []string // 本校区候选 SSID（按优先级）
+	UseRuijie  bool     // 本部锐捷 / 东区 Dr.COM
+}
+
+const (
+	// defaultBenbuHost 是本部锐捷门户。正常配置会以 AllowedHosts 形式提供，
+	// 这里只作为老配置缺少白名单时的兜底。
+	defaultBenbuHost = "10.255.240.8"
+	benbuPortalPort  = 80
+)
+
+// Plan 按用户选择的校区（PreferCampus）给出唯一登录目标。
+func Plan(prof config.Profile) CampusPlan {
+	campus := prof.Network.PreferCampus
+	if campus != config.CampusBenbu {
+		campus = config.CampusDongqu
+	}
+	if campus == config.CampusBenbu {
+		host := defaultBenbuHost
+		for _, h := range prof.Portal.AllowedHosts {
+			if h != "" && !strings.EqualFold(h, prof.Portal.Host) {
+				host = h
+				break
+			}
+		}
+		return CampusPlan{
+			Campus:     campus,
+			PortalHost: host,
+			PortalPort: benbuPortalPort,
+			SSIDs:      prof.SSIDsForCampus(campus),
+			UseRuijie:  true,
+		}
+	}
+	return CampusPlan{
+		Campus:     campus,
+		PortalHost: prof.Portal.Host,
+		PortalPort: prof.Portal.Port,
+		SSIDs:      prof.SSIDsForCampus(campus),
+		UseRuijie:  false,
+	}
+}
+
+// EndpointForCampus 从探针的 302/劫持页解析登录参数，但只接受本校区门户。
+// 另一校区的重定向一律忽略并告警：避免拿着本校区凭据去打对方门户。
+func EndpointForCampus(prof config.Profile, ev probe.Evidence) (portal.Endpoint, []string) {
+	plan := Plan(prof)
 	ep := portal.Endpoint{
-		Host:      prof.Portal.Host,
-		Port:      prof.Portal.Port,
+		Host:      plan.PortalHost,
+		Port:      plan.PortalPort,
 		LoginPath: prof.Portal.LoginPath,
 		Extra:     map[string]string{},
 	}
@@ -62,33 +112,37 @@ func EndpointFromEvidence(prof config.Profile, ev probe.Evidence) (portal.Endpoi
 	var warns []string
 
 	if ev.Location == "" {
-		warns = append(warns, "未拿到门户重定向地址，网关参数可能缺失")
-	} else if u, err := url.Parse(ev.Location); err == nil {
-		if h := u.Hostname(); h != "" {
-			ep.Host = h
-		}
-		if ps := u.Port(); ps != "" {
-			if n, err := strconv.Atoi(ps); err == nil {
-				ep.Port = n
-			}
-		} else if ep.Host != prof.Portal.Host {
-			// 本部锐捷的重定向不带端口（http://10.255.240.8/eportal/...）：
-			// 门户换了主机就按 scheme 默认 80，沿用配置里的 801 会打错端口。
-			ep.Port = 80
-		}
-		// 本部锐捷登录要把 index.jsp 的完整 query 原样透传（双重编码），
-		// 东区 Dr.COM 的 userip/usermac/wlanacip 等参数同样取自这里。
-		ep.Extra["rawquery"] = u.RawQuery
-		ep.Extra["indexpath"] = u.EscapedPath()
-		q := u.Query()
-		ep.Extra["userip"] = q.Get("userip")
-		ep.Extra["usermac"] = q.Get("usermac")
-		ep.Extra["wlanacip"] = q.Get("wlanacip")
+		warns = append(warns, "未拿到门户重定向地址，登录参数可能缺失")
+		return ep, warns
 	}
+
+	u, err := url.Parse(ev.Location)
+	if err != nil {
+		warns = append(warns, "门户重定向地址无法解析，已忽略")
+		return ep, warns
+	}
+	if h := u.Hostname(); h != "" && !strings.EqualFold(h, plan.PortalHost) {
+		warns = append(warns, fmt.Sprintf("门户重定向指向另一校区（%s），已忽略", h))
+		return ep, warns
+	}
+
+	if ps := u.Port(); ps != "" {
+		if n, err := strconv.Atoi(ps); err == nil {
+			ep.Port = n
+		}
+	}
+	// 本部锐捷登录要把 index.jsp 的完整 query 原样透传（双重编码），
+	// 东区 Dr.COM 的 userip/usermac/wlanacip 等参数同样取自这里。
+	ep.Extra["rawquery"] = u.RawQuery
+	ep.Extra["indexpath"] = u.EscapedPath()
+	q := u.Query()
+	ep.Extra["userip"] = q.Get("userip")
+	ep.Extra["usermac"] = q.Get("usermac")
+	ep.Extra["wlanacip"] = q.Get("wlanacip")
 
 	// userip/usermac/wlanacip 是东区 Dr.COM 的参数命名；本部锐捷用
 	// wlanuserip/mac/nasip 且整串原样透传，为空属正常，不告警。
-	if !strings.Contains(ep.Extra["indexpath"], "index.jsp") {
+	if !plan.UseRuijie {
 		for _, k := range []string{"userip", "usermac", "wlanacip"} {
 			if ep.Extra[k] == "" {
 				warns = append(warns, k+" 为空，仍尝试登录")

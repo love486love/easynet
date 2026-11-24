@@ -26,11 +26,11 @@ type Deps struct {
 	Stop func() bool
 	// OnVerified 在"登录成功且探针复核在线"后调用，用于记录 TOFU 网关 MAC。
 	OnVerified func()
-	// TargetSSIDs 是 profile 中的目标校园网 SSID 列表（东区 JXAU-Stu +
-	// 本部 JXAU）；CurrentSSID 返回当前连接的 SSID（取不到返回空）。
-	// SSID 匹配是最快的离线信号：已连上任一目标校园网却探不通，
+	// TargetSSIDs 返回当前选中校区的目标 SSID 列表（每轮重新读取，
+	// 界面切换校区后无需重启守护）。返回空表示无法判定。
+	// SSID 匹配是最快的离线信号：已连上目标校园网却探不通，
 	// 大概率是没认证，无需等满兜底次数。
-	TargetSSIDs []string
+	TargetSSIDs func() []string
 	CurrentSSID func() string
 	// PortalReachable 在试探登录前探测门户可达（nil 视为可达）。
 	// 开机阶段 Wi-Fi 已关联但 DHCP/DNS 未就绪时门户走不通，
@@ -117,16 +117,17 @@ func Run(ctx context.Context, d Deps) error {
 			// 最快信号）；连的是别的网络不代持登录，等切回来重新计数；
 			// SSID 取不到（未连 Wi-Fi/netsh 失败）保留 6 次兜底。
 			need := unknownLoginAfter
-			if d.CurrentSSID != nil && len(d.TargetSSIDs) > 0 {
+			targets := d.targetSSIDs()
+			if d.CurrentSSID != nil && len(targets) > 0 {
 				switch cur := strings.TrimSpace(d.CurrentSSID()); {
 				case cur == "":
 					// 未连 Wi-Fi 或查询失败：走兜底阈值
-				case matchSSID(cur, d.TargetSSIDs):
+				case matchSSID(cur, targets):
 					need = ssidLoginAfter
 				default:
 					if unknownStreak == 1 {
 						d.Log.Info("当前 Wi-Fi 非目标校园网，暂不发起登录",
-							"当前SSID", cur, "目标SSID", strings.Join(d.TargetSSIDs, ","))
+							"当前SSID", cur, "目标SSID", strings.Join(targets, ","))
 					}
 					unknownStreak = 0
 					if err := d.Sleep(ctx, onlineEvery); err != nil {
@@ -257,6 +258,14 @@ func seconds(v int, def int) time.Duration {
 		v = def
 	}
 	return time.Duration(v) * time.Second
+}
+
+// targetSSIDs 取当前校区的目标 SSID；未配置时返回空，调用方按兜底阈值处理。
+func (d Deps) targetSSIDs() []string {
+	if d.TargetSSIDs == nil {
+		return nil
+	}
+	return d.TargetSSIDs()
 }
 
 // allowLogin 在 10 分钟窗口内限制登录次数，并顺手清理过期记录。

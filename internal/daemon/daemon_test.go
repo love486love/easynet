@@ -312,7 +312,7 @@ func TestUnknownSSIDMatchedTrialsInThree(t *testing.T) {
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
-		TargetSSIDs: []string{"JXAU-Stu"},
+		TargetSSIDs: func() []string { return []string{"JXAU-Stu"} },
 		CurrentSSID: func() string { return "JXAU-Stu" },
 	})
 
@@ -352,7 +352,7 @@ func TestUnknownSSIDSecondCampusTrialsInThree(t *testing.T) {
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
-		TargetSSIDs: []string{"JXAU-Stu", "JXAU"},
+		TargetSSIDs: func() []string { return []string{"JXAU-Stu", "JXAU"} },
 		CurrentSSID: func() string { return "JXAU" },
 	})
 
@@ -391,7 +391,7 @@ func TestUnknownSSIDMismatchWaits(t *testing.T) {
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
-		TargetSSIDs: []string{"JXAU-Stu"},
+		TargetSSIDs: func() []string { return []string{"JXAU-Stu"} },
 		CurrentSSID: func() string { return "OtherNet" },
 	})
 
@@ -424,7 +424,7 @@ func TestUnknownPortalUnreachableWaits(t *testing.T) {
 		Sleep:       clock.Sleep,
 		Now:         clock.Now,
 		Log:         quietLogger(),
-		TargetSSIDs: []string{"JXAU-Stu"},
+		TargetSSIDs: func() []string { return []string{"JXAU-Stu"} },
 		CurrentSSID: func() string { return "JXAU-Stu" },
 		PortalReachable: func(context.Context) bool {
 			return false // 链路未就绪，门户连不上
