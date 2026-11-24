@@ -490,12 +490,45 @@
   .pill.on { color: #f59e0b; border-color: #f59e0b; background: rgba(245, 158, 11, .12); }
   .about-line { margin-top: 8px; font-size: 12.5px; color: var(--faint); }
   .about-btns { display: flex; gap: 8px; margin-top: 14px; }
+  .star-btn {
+    display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; padding: 8px 15px;
+    border-radius: 999px; border: 1px solid var(--line2); background: var(--bg); color: var(--text);
+    font-size: 12.5px; cursor: pointer; transition: border-color .18s, color .18s, transform .18s;
+  }
+  .star-btn:hover { border-color: #f59e0b; color: #f59e0b; transform: translateY(-1px); }
+  .star-btn svg { width: 15px; height: 15px; flex: none; }
+  .star-count { padding-left: 8px; border-left: 1px solid var(--line2); font-size: 11.5px; color: var(--muted); }
   .update-notes {
-    margin-top: 12px; max-height: 190px; overflow: auto; padding: 11px 13px; border-radius: 9px;
+    margin-top: 12px; max-height: 260px; overflow: auto; padding: 14px 16px; border-radius: 11px;
     background: var(--bg); border: 1px solid var(--line); color: var(--muted);
-    font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; text-align: left;
+    font-size: 12.5px; line-height: 1.75; word-break: break-word; text-align: left;
   }
   .update-notes[hidden] { display: none; }
+  .update-notes > :first-child { margin-top: 0; }
+  .update-notes > :last-child { margin-bottom: 0; }
+  .update-notes h1 { margin: 0 0 10px; font-size: 15px; font-weight: 700; color: var(--text); }
+  .update-notes h2 {
+    margin: 16px 0 8px; padding-bottom: 5px; font-size: 12.5px; font-weight: 700;
+    color: var(--accent); letter-spacing: .02em; border-bottom: 1px solid var(--line);
+  }
+  .update-notes h3 { margin: 12px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .update-notes p { margin: 0 0 9px; }
+  .update-notes ul { margin: 2px 0 10px; padding-left: 17px; }
+  .update-notes li { margin: 5px 0; padding-left: 1px; }
+  .update-notes li::marker { color: var(--accent); }
+  .update-notes strong { color: var(--text); font-weight: 600; }
+  .update-notes code {
+    padding: 1px 5px; border-radius: 4px; background: rgba(127, 127, 127, .16);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; color: var(--text);
+  }
+  .update-notes hr { height: 1px; border: 0; background: var(--line); margin: 14px 0; }
+  .update-notes blockquote { margin: 8px 0; padding: 2px 0 2px 10px; border-left: 2px solid var(--accent); color: var(--faint); }
+  .update-notes .md-table { margin: 8px 0 10px; overflow-x: auto; }
+  .update-notes table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .update-notes th, .update-notes td { padding: 6px 8px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+  .update-notes th { font-weight: 600; color: var(--text); background: rgba(127, 127, 127, .08); white-space: nowrap; }
+  .update-notes a { color: var(--accent); text-decoration: none; }
+  .update-notes a:hover { text-decoration: underline; }
   .update-go { width: 100%; margin-top: 10px; }
   .upd-progress { margin-top: 12px; }
   .upd-progress[hidden] { display: none; }

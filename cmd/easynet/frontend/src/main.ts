@@ -778,6 +778,105 @@ async function toggleAutostart() {
   }
 }
 
+/* ---------- 更新说明 Markdown 渲染 ---------- */
+// Release 正文是 Markdown，直接放进纯文本容器会把 # 和 ** 原样显示。
+// 这里做最小渲染：标题、列表、加粗、行内代码、链接、分隔线、引用、表格。
+function escHTML(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function inlineMD(s: string): string {
+  let out = escHTML(s);
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  return out;
+}
+
+function renderMarkdown(md: string): string {
+  const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  const out: string[] = [];
+  let inList = false;
+  const closeList = () => { if (inList) { out.push('</ul>'); inList = false; } };
+
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t) { closeList(); continue; }
+
+    // 表格：表头行 + 分隔行 + 数据行
+    if (t.startsWith('|') && t.endsWith('|') && i + 1 < lines.length) {
+      const sep = lines[i + 1].trim();
+      if (/^\|[\s:|-]+\|$/.test(sep)) {
+        closeList();
+        const cells = (row: string) => row.trim().slice(1, -1).split('|').map(c => c.trim());
+        const head = cells(t);
+        const rows: string[][] = [];
+        i += 2;
+        while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+          rows.push(cells(lines[i]));
+          i++;
+        }
+        i--;
+        out.push(
+          '<div class="md-table"><table><thead><tr>' +
+          head.map(c => '<th>' + inlineMD(c) + '</th>').join('') +
+          '</tr></thead><tbody>' +
+          rows.map(r => '<tr>' + r.map(c => '<td>' + inlineMD(c) + '</td>').join('') + '</tr>').join('') +
+          '</tbody></table></div>',
+        );
+        continue;
+      }
+    }
+
+    const h = /^(#{1,4})\s+(.*)$/.exec(t);
+    if (h) {
+      closeList();
+      const lv = Math.min(h[1].length, 3);
+      out.push('<h' + lv + '>' + inlineMD(h[2]) + '</h' + lv + '>');
+      continue;
+    }
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { closeList(); out.push('<hr>'); continue; }
+
+    const item = /^[-*+]\s+(.*)$/.exec(t);
+    if (item) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push('<li>' + inlineMD(item[1]) + '</li>');
+      continue;
+    }
+    if (t.startsWith('>')) {
+      closeList();
+      out.push('<blockquote>' + inlineMD(t.replace(/^>\s?/, '')) + '</blockquote>');
+      continue;
+    }
+
+    closeList();
+    out.push('<p>' + inlineMD(t) + '</p>');
+  }
+  closeList();
+  return out.join('');
+}
+
+/* ---------- GitHub Star 数 ---------- */
+// 校园网未认证时没有外网，请求会失败；这里静默处理，按钮本身仍可点击跳转。
+async function loadStarCount() {
+  const el = $('starCount');
+  if (!el) return;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    const resp = await fetch('https://api.github.com/repos/love486love/easynet', { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!resp.ok) return;
+    const info = await resp.json();
+    const n = Number(info && info.stargazers_count);
+    if (!Number.isFinite(n) || n <= 0) return;
+    el.textContent = n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+    el.hidden = false;
+  } catch {
+    // 离线、限流或请求被拦截：不显示数字，不打扰用户
+  }
+}
+
 let updateInfo = null;
 
 async function checkUpdate(silent) {
@@ -819,10 +918,10 @@ async function checkUpdate(silent) {
     if (notes) {
       if (u.has_update && u.body) {
         notes.hidden = false;
-        notes.textContent = u.body;
+        notes.innerHTML = renderMarkdown(u.body);
       } else {
         notes.hidden = true;
-        notes.textContent = '';
+        notes.innerHTML = '';
       }
     }
     if (btn) {
@@ -1101,6 +1200,7 @@ setInterval(loadLogs, 5000);
 setInterval(loadDaemon, 5000);
 setInterval(loadNetRate, 1000);
 maybeStartTutorial();
+loadStarCount();
 
 setTimeout(function () {
   const badge = $('verBadge');
