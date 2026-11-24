@@ -382,6 +382,35 @@ pause
 	return path
 }
 
+// cleanupUpdateResidue 删除上次成功升级留下的 .easynet.exe.old。
+// Windows 无法覆盖正在运行的 exe，selfupdate 只能先把旧文件改名、再落盘新文件；
+// 重启后旧进程已退出，这个备份不会再被用到，在启动最初清掉即可。
+func cleanupUpdateResidue() {
+	target, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cleanupUpdateResidueAt(target)
+}
+
+// cleanupUpdateResidueAt 清理 target 对应的旧版本备份，返回是否已删除。
+// 目标文件缺失时不动手：那说明上次替换失败，备份是唯一的可执行文件。
+func cleanupUpdateResidueAt(target string) bool {
+	if !fileExists(target) {
+		return false
+	}
+	_, old := updatePaths(target)
+	if !fileExists(old) {
+		return false
+	}
+	if err := os.Remove(old); err == nil {
+		return true
+	}
+	// 安全软件扫描常在这个瞬间占用旧文件，隔几秒再试一次，不阻塞启动。
+	time.AfterFunc(3*time.Second, func() { _ = os.Remove(old) })
+	return false
+}
+
 // updatePaths 返回与 target 同目录的新文件、备份文件路径（与 selfupdate 约定一致）。
 func updatePaths(target string) (neu, old string) {
 	dir, base := filepath.Dir(target), filepath.Base(target)

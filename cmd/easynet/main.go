@@ -14,6 +14,9 @@ import (
 var assets embed.FS
 
 func main() {
+	// 自动更新会留下旧版本备份，启动时顺手清掉（界面与守护都会走到这里）。
+	cleanupUpdateResidue()
+
 	// 同一个 exe 两个角色：双击是界面，带 --daemon 是无窗口守护（开机自启走这条）。
 	if hasDaemonArg() {
 		runDaemonMode()

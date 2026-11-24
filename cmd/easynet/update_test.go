@@ -56,6 +56,46 @@ func TestWriteUpdateHelper(t *testing.T) {
 	}
 }
 
+// 成功升级后残留的旧版本备份应在下次启动时清掉。
+func TestCleanupUpdateResidueRemovesBackup(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "easynet.exe")
+	if err := os.WriteFile(target, []byte("new"), 0o644); err != nil {
+		t.Fatalf("写目标失败: %v", err)
+	}
+	_, old := updatePaths(target)
+	if err := os.WriteFile(old, []byte("old"), 0o644); err != nil {
+		t.Fatalf("写备份失败: %v", err)
+	}
+
+	if !cleanupUpdateResidueAt(target) {
+		t.Fatal("应删除旧版本备份")
+	}
+	if fileExists(old) {
+		t.Fatal("备份仍然存在")
+	}
+	if !fileExists(target) {
+		t.Fatal("当前版本不应被删除")
+	}
+}
+
+// 目标文件缺失时，备份是唯一的可执行文件，绝不能清掉。
+func TestCleanupUpdateResidueKeepsOnlyCopy(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "easynet.exe")
+	_, old := updatePaths(target)
+	if err := os.WriteFile(old, []byte("only"), 0o644); err != nil {
+		t.Fatalf("写备份失败: %v", err)
+	}
+
+	if cleanupUpdateResidueAt(target) {
+		t.Fatal("目标缺失时不应报告删除")
+	}
+	if !fileExists(old) {
+		t.Fatal("唯一的可执行文件被误删")
+	}
+}
+
 func TestProbeSwapRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "easynet.exe")
