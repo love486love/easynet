@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <title>easynet</title>
 
-  <script type="module" crossorigin src="/assets/index-CrSPZR4b.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CPTPlxi2.css">
+  <script type="module" crossorigin src="/assets/index-BZfGOgvs.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DO8kaY61.css">
 </head>
 <body>
 <div class="app">
@@ -60,7 +60,7 @@
           <div class="nw-bar"><i id="nwFill"></i></div>
           <div class="nw-times" id="nwEnd"></div>
         </div>
-        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.6.5</div>
+        <div class="ver-badge" id="verBadge" onclick="onVersionClick()" title="当前版本">v0.6.6</div>
       </div>
     </aside>
 
@@ -78,13 +78,22 @@
               <div class="campus-seg-item" id="campusDongqu" data-c="dongqu" onclick="setCampus('dongqu')">东区</div>
               <div class="campus-seg-item" id="campusBenbu" data-c="benbu" onclick="setCampus('benbu')">本部</div>
             </div>
-            <div class="campus-note" id="campusNote">探测中…</div>
+            <div class="campus-status">
+              <span class="campus-pill set" id="campusSet">设定 · 东区</span>
+              <span class="campus-pill cur" id="campusCur">当前 · 探测中</span>
+            </div>
+            <div class="campus-note" id="campusNote"></div>
           </div>
         </div>
 
         <div class="cred-hint" id="credHint">
           <span>尚未保存校园网账号，守护无法自动认证</span>
           <button class="btn" onclick="goAccount()">去填写</button>
+        </div>
+
+        <div class="cred-hint" id="authHint" style="display:none">
+          <span id="authHintText"></span>
+          <button class="btn" onclick="goAccount()">去修改</button>
         </div>
 
         <div class="hero">
@@ -341,6 +350,17 @@
 
         <div class="set-card">
           <div class="set-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v18"/><path d="M5 8l7-5 7 5"/><path d="M5 16l7 5 7-5"/></svg>
+          </div>
+          <div class="set-text">
+            <div class="set-title">更新时直连</div>
+            <div class="set-desc">检查更新时直接连接 GitHub，不经过系统代理。代理未启动或超时导致检查失败时打开。</div>
+          </div>
+          <div class="switch" id="directSwitch" onclick="toggleUpdateDirect()"></div>
+        </div>
+
+        <div class="set-card">
+          <div class="set-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M8 8h8M8 12h5"/></svg>
           </div>
           <div class="set-text">
@@ -367,7 +387,7 @@
           <div class="about-head">
             <img class="about-logo" src="/appicon.png" alt="easynet">
             <div class="about-name">easynet</div>
-            <span class="about-ver" onclick="checkUpdate(false)">v0.6.5</span>
+            <span class="about-ver" onclick="checkUpdate(false)">v0.6.6</span>
             <div class="about-sub">江西农业大学校园网自动认证客户端</div>
             <button class="star-btn" id="starBtn" onclick="openRepo()" title="在 GitHub 上给 easynet 点个 Star">
               <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>

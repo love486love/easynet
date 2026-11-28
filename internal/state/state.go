@@ -13,8 +13,12 @@ import (
 
 // Snapshot 是守护进程写出的最后一帧状态。
 type Snapshot struct {
-	State     string    `json:"state"` // online / offline / unknown / stopped
-	Message   string    `json:"message"`
+	State   string `json:"state"` // online / offline / unknown / stopped
+	Message string `json:"message"`
+	// Reason 是自动认证暂停的原因：time_policy / credential / locked，空表示正常。
+	Reason string `json:"reason,omitempty"`
+	// RetryAt 是定时恢复的 Unix 秒；0 表示没有定时重试（需人工处理）。
+	RetryAt   int64     `json:"retry_at,omitempty"`
 	PID       int       `json:"pid"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -27,6 +27,18 @@ import (
 	"github.com/love486love/easynet/internal/trust"
 )
 
+// writeSnapshot 在当前快照基础上更新字段。
+// 界面与守护会分别写同一份文件，直接覆盖会把对方写入的暂停原因冲掉。
+func writeSnapshot(dir string, mutate func(*state.Snapshot)) {
+	snap, _ := state.Read(dir)
+	if snap.PID == 0 {
+		snap.PID = os.Getpid()
+	}
+	mutate(&snap)
+	snap.UpdatedAt = time.Now()
+	_ = state.Write(dir, snap)
+}
+
 // portalKind 返回协议名，仅用于日志可读性。
 func portalKind(ruijiePortal bool) string {
 	if ruijiePortal {
@@ -308,7 +320,15 @@ func RunDaemon(profilePath string) error {
 			} else if st == portal.StateOnline {
 				lastMessage = ""
 			}
-			_ = state.Write(dir, state.Snapshot{State: st.String(), Message: lastMessage, PID: os.Getpid()})
+			writeSnapshot(dir, func(s *state.Snapshot) {
+				s.State = st.String()
+				s.Message = lastMessage
+				// 能上网说明账号可用，暂停原因自动失效。
+				if st == portal.StateOnline {
+					s.Reason = ""
+					s.RetryAt = 0
+				}
+			})
 			return st, ev, perr
 		},
 		Login: loginFn,
@@ -331,6 +351,30 @@ func RunDaemon(profilePath string) error {
 			}
 			_ = conn.Close()
 			return true
+		},
+		// 暂停原因写入快照，界面据此显示提示与「去修改」入口。
+		SetStatus: func(reason, message string, retryAt time.Time) {
+			var unix int64
+			if !retryAt.IsZero() {
+				unix = retryAt.Unix()
+			}
+			writeSnapshot(dir, func(s *state.Snapshot) {
+				s.Reason = reason
+				s.RetryAt = unix
+				if reason == "" {
+					s.Message = ""
+					return
+				}
+				s.Message = message
+			})
+		},
+		// 账号文件修改时间变化即视为保存了新账号，恢复自动认证。
+		CredentialVersion: func() string {
+			st, err := os.Stat(creds.StorePath(dir))
+			if err != nil {
+				return ""
+			}
+			return strconv.FormatInt(st.ModTime().UnixNano(), 10)
 		},
 		OnVerified: func() {
 			if lastGatewayMAC == "" {

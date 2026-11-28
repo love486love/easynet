@@ -36,6 +36,12 @@ type Deps struct {
 	// 开机阶段 Wi-Fi 已关联但 DHCP/DNS 未就绪时门户走不通，
 	// 先等链路就绪再登录，避免发注定失败的空参数请求。
 	PortalReachable func(context.Context) bool
+	// SetStatus 把自动认证的暂停原因写进状态快照，供界面展示。
+	// reason 为空表示恢复正常；retryAt 为零值表示没有定时重试。
+	SetStatus func(reason, message string, retryAt time.Time)
+	// CredentialVersion 返回账号文件的版本标识（如修改时间）。
+	// 账号被重新保存后版本变化，据此恢复因密码错误而暂停的自动认证。
+	CredentialVersion func() string
 }
 
 const (
@@ -49,6 +55,12 @@ const (
 	// ssidLoginAfter 是已确认连上目标校园网时的判定次数（SSID 是最快的
 	// 离线信号，比等满兜底次数快一倍以上）。
 	ssidLoginAfter = 3
+	// timePolicySilence 是网关提示不在上网时段后的固定静默时长：
+	// 期间只探测不登录，不计失败、不占登录配额。
+	timePolicySilence = 30 * time.Minute
+	// concurrencyBackoffBase/Max 控制账号并发被拒后的指数退避。
+	concurrencyBackoffBase = 30 * time.Second
+	concurrencyBackoffMax  = 10 * time.Minute
 )
 
 // Run 阻塞运行守护循环，直到 ctx 取消。
@@ -73,6 +85,11 @@ func Run(ctx context.Context, d Deps) error {
 	unknownStreak := 0
 	probeFails := 0
 	wasOnline := false
+	lastOffCampus := ""
+	var silentUntil time.Time
+	blockedKind := portal.RejectUnknown
+	blockedVersion := ""
+	concurrencyFails := 0
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -101,6 +118,14 @@ func Run(ctx context.Context, d Deps) error {
 			wasOnline = true
 			consecutiveFails = 0
 			unknownStreak = 0
+			concurrencyFails = 0
+			// 能上网说明账号可用：清掉此前的暂停原因（例如限时静默期间
+			// 用户手动登录成功、或密码错误后已在别处恢复）。
+			if !silentUntil.IsZero() || blockedKind != portal.RejectUnknown {
+				silentUntil = time.Time{}
+				blockedKind = portal.RejectUnknown
+				d.setStatus("", "", time.Time{})
+			}
 			if err := d.Sleep(ctx, onlineEvery); err != nil {
 				return nil
 			}
@@ -155,6 +180,47 @@ func Run(ctx context.Context, d Deps) error {
 			d.Log.Warn("探针持续不可用，尝试直接登录", "连续次数", need)
 		}
 
+		// 校区硬隔离：当前明确连着别的网络（手机热点、另一校区）时，
+		// 不代用户发起登录，也不消耗失败次数与登录配额——连什么网络是用户的自由。
+		// SSID 取不到（未连 Wi-Fi / 查询失败）时无法判定，仍走兜底登录。
+		if cur, off := d.offCampus(); off {
+			if cur != lastOffCampus {
+				lastOffCampus = cur
+				d.Log.Info("当前 Wi-Fi 非设定校区，暂不发起登录",
+					"当前SSID", cur, "目标SSID", strings.Join(d.targetSSIDs(), ","))
+			}
+			wasOnline = false
+			consecutiveFails = 0
+			if err := d.Sleep(ctx, onlineEvery); err != nil {
+				return nil
+			}
+			continue
+		}
+		lastOffCampus = ""
+
+		// 时间策略静默：只探测不登录，不计失败、不占配额。
+		// 手动点「立即登录」走界面进程，不受这里的静默限制。
+		if d.Now().Before(silentUntil) {
+			if err := d.Sleep(ctx, onlineEvery); err != nil {
+				return nil
+			}
+			continue
+		}
+		silentUntil = time.Time{}
+
+		// 密码错误/账号锁定后停止自动重试，直到账号文件被重新保存。
+		if blockedKind != portal.RejectUnknown {
+			if !d.credentialChanged(blockedVersion) {
+				if err := d.Sleep(ctx, onlineEvery); err != nil {
+					return nil
+				}
+				continue
+			}
+			d.Log.Info("检测到账号已更新，恢复自动认证", "此前原因", blockedKind.String())
+			blockedKind = portal.RejectUnknown
+			d.setStatus("", "", time.Time{})
+		}
+
 		// 以下按未认证处理。
 		if wasOnline {
 			d.Log.Warn("检测到掉线", "判定", state.String(), "http", ev.StatusCode)
@@ -192,6 +258,43 @@ func Run(ctx context.Context, d Deps) error {
 			}
 			continue
 		}
+		// 按网关文案归类被拒原因，决定重试策略。
+		if lerr == nil {
+			switch kind := portal.ClassifyReject(res); kind {
+			case portal.RejectTimePolicy:
+				// 限时策略：固定静默，期间只探测，不登录、不计失败、不占配额。
+				consecutiveFails = 0
+				silentUntil = d.Now().Add(timePolicySilence)
+				d.setStatus(kind.String(), res.Message, silentUntil)
+				d.Log.Info("网关提示不在上网时段，静默等待", "恢复时间", silentUntil.Format("15:04"))
+				if err := d.Sleep(ctx, onlineEvery); err != nil {
+					return nil
+				}
+				continue
+			case portal.RejectBadCredential, portal.RejectLocked:
+				// 继续重试只会加重锁定，停止自动认证等用户改账号。
+				consecutiveFails = 0
+				blockedKind = kind
+				blockedVersion = d.credentialVersion()
+				d.setStatus(kind.String(), res.Message, time.Time{})
+				d.Log.Warn("账号被网关拒绝，已停止自动重试，请检查账号密码",
+					"原因", kind.String(), "消息", logx.MaskURL(res.Message))
+				if err := d.Sleep(ctx, onlineEvery); err != nil {
+					return nil
+				}
+				continue
+			case portal.RejectConcurrency:
+				// 同一账号在别处在线：频繁重试会互相踢下线，改用长退避。
+				concurrencyFails++
+				wait := concurrencyBackoff(concurrencyFails)
+				d.Log.Warn("账号并发登录被拒，延长退避", "连续次数", concurrencyFails, "等待", wait.String())
+				if err := d.Sleep(ctx, wait); err != nil {
+					return nil
+				}
+				continue
+			}
+		}
+
 		if lerr != nil || !res.OK {
 			consecutiveFails++
 			wait := backoff(consecutiveFails, failRetry, backoffMax)
@@ -226,6 +329,8 @@ func Run(ctx context.Context, d Deps) error {
 		lastLoginAt = d.Now()
 		wasOnline = true
 		consecutiveFails = 0
+		concurrencyFails = 0
+		d.setStatus("", "", time.Time{})
 		if d.OnVerified != nil {
 			d.OnVerified()
 		}
@@ -266,6 +371,60 @@ func (d Deps) targetSSIDs() []string {
 		return nil
 	}
 	return d.TargetSSIDs()
+}
+
+// offCampus 判断当前是否明确连着非设定校区的网络。
+// ok=false 表示无法判定（未连 Wi-Fi、SSID 查询失败或未配置目标），
+// 此时仍走兜底登录，避免因读不到 SSID 而永远不认证。
+func (d Deps) offCampus() (cur string, off bool) {
+	if d.CurrentSSID == nil {
+		return "", false
+	}
+	targets := d.targetSSIDs()
+	if len(targets) == 0 {
+		return "", false
+	}
+	cur = strings.TrimSpace(d.CurrentSSID())
+	if cur == "" {
+		return "", false
+	}
+	return cur, !matchSSID(cur, targets)
+}
+
+// setStatus 汇报暂停原因；未注入时静默跳过（单测可直接省略）。
+func (d Deps) setStatus(reason, message string, retryAt time.Time) {
+	if d.SetStatus != nil {
+		d.SetStatus(reason, message, retryAt)
+	}
+}
+
+// credentialVersion 取账号文件版本，未注入时返回空串。
+func (d Deps) credentialVersion() string {
+	if d.CredentialVersion == nil {
+		return ""
+	}
+	return d.CredentialVersion()
+}
+
+// credentialChanged 判断账号文件是否在暂停后发生了变化。
+// 未注入版本回调时返回 false，保持暂停（宁可不试也不乱试）。
+func (d Deps) credentialChanged(since string) bool {
+	if d.CredentialVersion == nil {
+		return false
+	}
+	return d.CredentialVersion() != since
+}
+
+// concurrencyBackoff：30s 起翻倍，封顶 10 分钟。
+func concurrencyBackoff(fails int) time.Duration {
+	wait := concurrencyBackoffBase
+	for i := 1; i < fails && wait < concurrencyBackoffMax; i++ {
+		wait *= 2
+	}
+	if wait > concurrencyBackoffMax {
+		wait = concurrencyBackoffMax
+	}
+	return wait
 }
 
 // allowLogin 在 10 分钟窗口内限制登录次数，并顺手清理过期记录。

@@ -262,18 +262,46 @@ function rgba(c, a) {
   return `rgba(${r},${gg},${b},${a})`;
 }
 
+// fmtClock 把 Unix 秒格式化成 HH:mm，用于展示定时恢复时间。
+function fmtClock(unixSec) {
+  const d = new Date(Number(unixSec) * 1000);
+  const p = (n) => (n < 10 ? '0' : '') + n;
+  return p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
 async function loadDaemon() {
   if (!App()) return;
   try {
     const d = await App().Daemon();
     const running = !!d.running;
+    const reason = String(d.reason || '');
+    const retryAt = Number(d.retry_at || 0);
     const dot = $('dDot');
     dot.className = 'dot ' + (running ? (d.state === 'online' ? 'online' : '') : 'offline');
     $('dTitle').textContent = running ? '后台守护运行中' : '后台守护未运行';
     let sub = running ? '已自动维持在线，关闭窗口不影响' : '关闭窗口后不会自动重连';
+    if (running && reason === 'time_policy') {
+      // 限时策略：固定静默，期间守护只探测不登录
+      sub = retryAt
+        ? '当前不在上网时段，' + fmtClock(retryAt) + ' 后自动重试'
+        : '当前不在上网时段，已暂停自动登录';
+    } else if (running && (reason === 'credential' || reason === 'locked')) {
+      sub = reason === 'credential' ? '账号或密码被拒，自动重试已暂停' : '账号被网关锁定，自动重试已暂停';
+    }
     $('dSub').textContent = sub;
-    // 守护出错时用弹窗提示，不把长错误塞进卡片
-    if (d.message && String(d.message) !== sub) toastError(String(d.message));
+
+    // 需要人工处理时给出直达账号页的提示条
+    const hint = $('authHint');
+    if (hint) {
+      const needFix = running && (reason === 'credential' || reason === 'locked');
+      hint.style.display = needFix ? 'flex' : 'none';
+      if (needFix) {
+        $('authHintText').textContent = String(d.message || '请检查账号密码后重新保存');
+      }
+    }
+
+    // 守护出错时用弹窗提示，不把长错误塞进卡片；已暂停原因改由提示条展示
+    if (d.message && !reason && String(d.message) !== sub) toastError(String(d.message));
     $('dSwitch').classList.toggle('on', !!(await App().DaemonEnabled()));
   } catch (e) { }
 }
@@ -447,28 +475,44 @@ async function loadCampus() {
   if (!App() || !App().Campus) return;
   try {
     const c = await App().Campus();
-    // 指示块优先跟随实际连接（门户由网络决定）；未连校园网时显示记忆的偏好。
-    const at = c.connected || c.prefer || 'dongqu';
-    markCampusSide(at);
+    const set = c.prefer || 'dongqu';
+    const setName = CAMPUS_NAMES[set] || '东区';
+
+    // 滑条只反映用户设定，绝不被实际连接覆盖——设定是唯一权威。
+    markCampusSide(set);
+
+    const setEl = $('campusSet');
+    if (setEl) setEl.textContent = '设定 · ' + setName;
+
+    const curEl = $('campusCur');
     const note = $('campusNote');
+    let conflict = false;
+    if (c.ssid) {
+      conflict = c.connected !== set;
+    }
+    if (curEl) {
+      curEl.textContent = c.ssid ? '当前 · ' + c.ssid : '当前 · 未连接';
+      curEl.classList.toggle('warn', !c.ssid || conflict);
+    }
     if (note) {
-      if (c.connected) {
-        note.textContent = '已连接' + CAMPUS_NAMES[c.connected] + ' · ' + c.ssid;
-        note.className = 'campus-note ok';
-      } else if (c.ssid) {
-        note.textContent = '非校园网 ' + c.ssid + '，回连：' + CAMPUS_NAMES[c.prefer || 'dongqu'];
+      if (conflict) {
+        note.textContent = c.auto
+          ? '已开启自动连接，正在切回' + setName + '校园网 ' + (CAMPUS_SSID[set] || '')
+          : '当前不在设定校区，未自动切换；可在设置中开启自动连接';
+        note.className = 'campus-note warn';
+      } else if (!c.ssid) {
+        note.textContent = c.auto ? '未连 Wi-Fi，将自动连回' + setName : '未连 Wi-Fi';
         note.className = 'campus-note';
       } else {
-        note.textContent = '未连 Wi-Fi，回连：' + CAMPUS_NAMES[c.prefer || 'dongqu'];
+        note.textContent = '';
         note.className = 'campus-note';
       }
     }
-    // 设置页「自动连接校园 Wi-Fi」文案跟随滑条所选校区。
+    // 设置页「自动连接校园 Wi-Fi」文案跟随设定校区。
     const wd = $('wifiDesc');
     if (wd) {
-      const prefer = c.prefer || 'dongqu';
-      wd.textContent = '守护发现没连校园网时，自动连回' + CAMPUS_NAMES[prefer] +
-        '校园网 ' + (CAMPUS_SSID[prefer] || '') + '。';
+      wd.textContent = '守护发现没连校园网时，自动连回' + setName +
+        '校园网 ' + (CAMPUS_SSID[set] || '') + '。';
     }
   } catch (e) { }
 }
@@ -514,6 +558,7 @@ async function refresh() {
   await loadDaemon();
   await loadAccounts();
   await loadWifiAuto();
+  await loadUpdateDirect();
   await loadCampus();
 }
 
@@ -757,6 +802,28 @@ async function toggleWifiAuto() {
     const msg = await App().SetWifiAutoEnabled(next);
     await loadWifiAuto();
     toast(msg || (next ? '已开启自动连接' : '已关闭自动连接'), true);
+  } catch (e) {
+    sw.classList.toggle('on', !next);
+    toast((e && e.message) ? e.message : String(e), false);
+  }
+}
+
+async function loadUpdateDirect() {
+  if (!App() || !App().UpdateDirect) return;
+  try {
+    $('directSwitch').classList.toggle('on', !!(await App().UpdateDirect()));
+  } catch (e) { }
+}
+
+async function toggleUpdateDirect() {
+  if (!App() || !App().SetUpdateDirect) return;
+  const sw = $('directSwitch');
+  const next = !sw.classList.contains('on');
+  sw.classList.toggle('on', next);
+  try {
+    const msg = await App().SetUpdateDirect(next);
+    await loadUpdateDirect();
+    toast(msg || (next ? '已开启更新直连' : '已关闭更新直连'), true);
   } catch (e) {
     sw.classList.toggle('on', !next);
     toast((e && e.message) ? e.message : String(e), false);
@@ -1221,7 +1288,7 @@ updateNetWindow();
 setInterval(updateNetWindow, 30000);
 
 // 迁移到 ES module 后，index.html 的内联 onclick 需要显式挂到 window。
-Object.assign(window, { winMin, winMax, winClose, openRepo, openRelease, resolveTheme, updateThemeSeg, applyTheme, toggleTheme, setMsg, toast, renderState, goAccount, fmtRate, fmtBytes, setRateNum, loadNetRate, drawRateChart, rgba, loadDaemon, toggleDaemon, carrierName, loadAccounts, renderAccLists, renderEditor, newAccount, updateCampusLabel, selectAccount, deleteCurrent, markCampusSide, loadCampus, setCampus, toggleFold, renderFoldCounts, refresh, setLogMsg, exportLogs, openLogsDir, loadLogs, doLogin, saveCred, loadAutostart, loadWifiAuto, toggleWifiAuto, toggleAutostart, checkUpdate, doUpdate, onVersionClick, nwAt, nwWindow, nwFmt, nwClock, updateNetWindow, startTutorial, showTutorialStep, nextTutorial, prevTutorial, endTutorial, maybeStartTutorial })
+Object.assign(window, { winMin, winMax, winClose, openRepo, openRelease, resolveTheme, updateThemeSeg, applyTheme, toggleTheme, setMsg, toast, renderState, goAccount, fmtRate, fmtBytes, setRateNum, loadNetRate, drawRateChart, rgba, loadDaemon, toggleDaemon, carrierName, loadAccounts, renderAccLists, renderEditor, newAccount, updateCampusLabel, selectAccount, deleteCurrent, markCampusSide, loadCampus, setCampus, toggleFold, renderFoldCounts, refresh, setLogMsg, exportLogs, openLogsDir, loadLogs, doLogin, saveCred, loadAutostart, loadWifiAuto, toggleWifiAuto, loadUpdateDirect, toggleUpdateDirect, toggleAutostart, checkUpdate, doUpdate, onVersionClick, nwAt, nwWindow, nwFmt, nwClock, updateNetWindow, startTutorial, showTutorialStep, nextTutorial, prevTutorial, endTutorial, maybeStartTutorial })
 
 /* ---------- 鼠标光晕 ---------- */
 // 光晕挂在一个只覆盖内容区的固定容器里：容器负责裁切与边缘渐隐，

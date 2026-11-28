@@ -65,9 +65,13 @@ type AutostartState struct {
 
 // DaemonInfo 是守护进程的当前状态（由 state.json 快照推断）。
 type DaemonInfo struct {
-	Running   bool      `json:"running"`
-	State     string    `json:"state"`
-	Message   string    `json:"message"`
+	Running bool   `json:"running"`
+	State   string `json:"state"`
+	Message string `json:"message"`
+	// Reason 是自动认证暂停的原因：time_policy / credential / locked。
+	Reason string `json:"reason"`
+	// RetryAt 是定时恢复的 Unix 秒，0 表示需人工处理。
+	RetryAt   int64     `json:"retry_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
@@ -79,10 +83,13 @@ type AccountInfo struct {
 	Current  bool   `json:"current"`
 }
 
-// CampusInfo 是概览页校区滑条的状态。
+// CampusInfo 是概览页校区状态。
 type CampusInfo struct {
-	// Prefer 是滑条记忆的优先校区（自动连回 Wi-Fi 的目标）。
+	// Prefer 是用户设定的校区（dongqu/benbu）。设定是唯一权威：
+	// 界面滑条只显示它，实际连接单独展示，不覆盖设定。
 	Prefer string `json:"prefer"`
+	// Auto 是「自动连接校园 Wi-Fi」开关当前是否开启。
+	Auto bool `json:"auto"`
 	// Connected 是当前连上的校区（dongqu/benbu），未连校园网为空。
 	Connected string `json:"connected"`
 	SSID      string `json:"ssid"`
@@ -108,6 +115,8 @@ func NewApp() *App {
 		lg = slog.New(slog.NewTextHandler(io.Discard, nil))
 		closeLog = func() error { return nil }
 	}
+	// 更新直连设置随进程启动生效，检查更新与下载共用同一开关。
+	initUpdateProxy(dir)
 	return &App{prof: prof, dir: dir, log: lg, closeLog: closeLog}
 }
 
@@ -198,19 +207,25 @@ func (a *App) Counters() (NetIO, error) {
 	return NetIO{In: in, Out: out}, nil
 }
 
-// Campus 返回概览页校区滑条的状态：优先校区（滑条记忆）+ 当前实际连接的校区。
-// 实际连接优先展示——门户由网络决定，滑条显示的必须是真实情况。
+// Campus 返回概览页校区状态：用户设定的校区 + 实际连接情况。
+// 设定是唯一权威，界面滑条只显示它；实际连接单独展示，不覆盖设定。
 func (a *App) Campus() CampusInfo {
-	info := CampusInfo{Prefer: a.prof.Network.PreferCampus}
+	// 设定以磁盘为准：界面与守护读同一个 profile.json，
+	// 避免界面拿启动时的内存快照显示过期的设定。
+	prof := a.prof
+	if p, err := app.LoadProfile(""); err == nil {
+		prof = p
+	}
+	info := CampusInfo{Prefer: prof.Network.PreferCampus, Auto: a.WifiAutoEnabled()}
 	if info.Prefer == "" {
 		info.Prefer = config.CampusDongqu
 	}
 	if ni, err := netinfo.Get(); err == nil {
 		info.SSID = ni.SSID
-		if strings.EqualFold(ni.SSID, a.prof.Network.SSID) {
+		if strings.EqualFold(ni.SSID, prof.Network.SSID) {
 			info.Connected = config.CampusDongqu
 		}
-		for _, s := range a.prof.Network.ExtraSSIDs {
+		for _, s := range prof.Network.ExtraSSIDs {
 			if strings.EqualFold(ni.SSID, s) {
 				info.Connected = config.CampusBenbu
 			}
@@ -579,6 +594,8 @@ func (a *App) Daemon() DaemonInfo {
 		Running:   snap.State != "stopped" && time.Since(snap.UpdatedAt) <= 20*time.Second,
 		State:     snap.State,
 		Message:   snap.Message,
+		Reason:    snap.Reason,
+		RetryAt:   snap.RetryAt,
 		UpdatedAt: snap.UpdatedAt,
 	}
 }

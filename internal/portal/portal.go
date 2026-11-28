@@ -5,6 +5,7 @@ package portal
 import (
 	"context"
 	"regexp"
+	"strings"
 )
 
 // maxHijackBody 是提取跳转地址时允许检查的正文上限。
@@ -74,6 +75,86 @@ type Result struct {
 	Code    int    // 错误码，见本文件下方的约定
 	Message string // 可直接展示的文案
 	RetCode int    // 服务端返回的 ret_code，仅用于诊断
+}
+
+// RejectKind 是登录被拒的原因分类。网关只返回文案、没有稳定的错误码，
+// 因此按关键词归类；判不出来的一律按普通失败处理（照常退避重试）。
+type RejectKind int
+
+const (
+	// RejectUnknown 表示未归类，按普通失败处理。
+	RejectUnknown RejectKind = iota
+	// RejectTimePolicy 表示当前不在允许上网的时间段（本科生限时策略）。
+	RejectTimePolicy
+	// RejectBadCredential 表示密码错误或账号不存在。
+	RejectBadCredential
+	// RejectLocked 表示账号被锁定、冻结或欠费停机。
+	RejectLocked
+	// RejectConcurrency 表示账号并发/终端数超限。
+	RejectConcurrency
+)
+
+func (k RejectKind) String() string {
+	switch k {
+	case RejectTimePolicy:
+		return "time_policy"
+	case RejectBadCredential:
+		return "credential"
+	case RejectLocked:
+		return "locked"
+	case RejectConcurrency:
+		return "concurrency"
+	default:
+		return ""
+	}
+}
+
+// 关键词表。只用于归类重试策略，不改变"登录失败"这一事实。
+var (
+	timePolicyWords = []string{
+		"上网时间", "上网时段", "非上网时间", "不在允许", "不在服务时间",
+		"禁止上网", "不允许上网", "时间策略",
+	}
+	lockedWords = []string{
+		"锁定", "冻结", "欠费", "停机", "停用", "暂停使用", "已报停",
+	}
+	badCredentialWords = []string{
+		"密码错误", "密码不正确", "密码有误", "用户不存在", "账号不存在",
+		"用户名或密码", "账号或密码",
+	}
+	concurrencyWords = []string{
+		"同时在线", "并发登录", "超过最大", "在线设备", "终端数",
+	}
+)
+
+// ClassifyReject 按网关返回的文案归类拒绝原因。
+// 判断只看网关返回：账号能登录成功（能上网）就说明不受限时策略约束，
+// 不按当前时间猜测。
+func ClassifyReject(res Result) RejectKind {
+	if res.OK || res.Message == "" {
+		return RejectUnknown
+	}
+	switch {
+	case containsAny(res.Message, timePolicyWords):
+		return RejectTimePolicy
+	case containsAny(res.Message, lockedWords):
+		return RejectLocked
+	case containsAny(res.Message, badCredentialWords):
+		return RejectBadCredential
+	case containsAny(res.Message, concurrencyWords):
+		return RejectConcurrency
+	default:
+		return RejectUnknown
+	}
+}
+
+func containsAny(s string, words []string) bool {
+	for _, w := range words {
+		if strings.Contains(s, w) {
+			return true
+		}
+	}
+	return false
 }
 
 // Portal 是一种门户协议的实现。

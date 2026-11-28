@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/minio/selfupdate"
@@ -36,7 +37,57 @@ const (
 	// 若不重试，selfupdate 会把旧文件改名后换不进新文件，目标位置直接空掉。
 	swapAttempts      = 3
 	swapRenameRetries = 4
+	// updateDirectFile 是「更新时直连」开关的标记文件；不存在即走系统代理。
+	updateDirectFile = "update_direct"
 )
+
+// updateDirect 为 true 时更新请求直连，不使用系统代理。
+var updateDirect atomic.Bool
+
+// updateClient 是更新专用客户端：只切换是否走代理，其余沿用默认传输。
+// 校园网里常见「系统代理指向未启动的本地代理」，直连能绕开这种失败。
+var updateClient = &http.Client{Transport: newUpdateTransport()}
+
+func newUpdateTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.Proxy = func(r *http.Request) (*url.URL, error) {
+		if updateDirect.Load() {
+			return nil, nil
+		}
+		return http.ProxyFromEnvironment(r)
+	}
+	return t
+}
+
+// initUpdateProxy 按磁盘设置初始化是否直连。
+func initUpdateProxy(dir string) {
+	if _, err := os.Stat(filepath.Join(dir, updateDirectFile)); err == nil {
+		updateDirect.Store(true)
+	}
+}
+
+// UpdateDirect 报告更新请求是否直连（不走系统代理）。默认关闭。
+func (a *App) UpdateDirect() bool {
+	_, err := os.Stat(filepath.Join(a.dir, updateDirectFile))
+	return err == nil
+}
+
+// SetUpdateDirect 持久化更新直连开关，下一次请求立即生效。
+func (a *App) SetUpdateDirect(enabled bool) (string, error) {
+	path := filepath.Join(a.dir, updateDirectFile)
+	if enabled {
+		if err := os.WriteFile(path, []byte("1"), 0o644); err != nil {
+			return "", err
+		}
+		updateDirect.Store(true)
+		return "已开启：检查更新将直连 GitHub", nil
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	updateDirect.Store(false)
+	return "已关闭：检查更新按系统代理设置连接", nil
+}
 
 // assetRef 记录一个 Release 资产的两个下载入口：
 // API 入口会 302 到真实文件域，能绕开被网关拦截的 github.com 直链。
@@ -146,13 +197,14 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	resp, err := requestWithRetry(ctx, http.DefaultClient, releaseAPI, map[string]string{
+	resp, err := requestWithRetry(ctx, updateClient, releaseAPI, map[string]string{
 		"Accept":     "application/vnd.github+json",
 		"User-Agent": userAgent,
 	}, func(r *http.Response) bool { return r.StatusCode == http.StatusOK })
 	if err != nil {
-		log.Error("检查更新失败", "当前版本", Version, "err", err)
-		return UpdateInfo{}, fmt.Errorf("无法连接 GitHub，请稍后重试")
+		// 检查更新失败是常见情况（没网、代理未启动），按告警记录即可。
+		log.Warn("检查更新失败", "当前版本", Version, "直连", updateDirect.Load(), "err", err)
+		return UpdateInfo{}, fmt.Errorf("检查更新失败：%s", updateErrHint(err))
 	}
 	defer resp.Body.Close()
 
@@ -194,6 +246,19 @@ func (a *App) CheckUpdate() (UpdateInfo, error) {
 	log.Info("检查更新", "当前版本", info.Current, "最新版本", info.Latest,
 		"发现新版本", info.HasUpdate, "可自动更新", info.CanAuto)
 	return info, nil
+}
+
+// updateErrHint 把检查更新失败翻译成可操作的原因。
+func updateErrHint(err error) string {
+	s := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(s, "proxy"):
+		return "代理未启动或不可用，可在设置中开启「更新时直连」后重试"
+	case strings.Contains(s, "timeout") || strings.Contains(s, "deadline"):
+		return "连接 GitHub 超时，请稍后重试；若开了代理，可尝试「更新时直连」"
+	default:
+		return "无法连接 GitHub，请稍后重试；若代理未启动，可在设置中开启「更新时直连」"
+	}
 }
 
 // ApplyUpdate 下载并安装最新版本。绿色版原地替换 exe，安装版运行新版安装包。
@@ -550,6 +615,7 @@ func resolveAsset(ctx context.Context, apiURL string) (string, error) {
 	}
 
 	client := &http.Client{
+		Transport:     updateClient.Transport,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	resp, err := requestWithRetry(ctx, client, apiURL, map[string]string{
@@ -641,7 +707,7 @@ func downloadSimpleOnce(ctx context.Context, url string, rep *progressReporter) 
 	}
 	req.Header.Set("User-Agent", userAgent)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := updateClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -730,7 +796,7 @@ func downloadRangeOnce(ctx context.Context, url string, start, end int64, rep *p
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := updateClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
