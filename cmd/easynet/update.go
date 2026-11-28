@@ -19,7 +19,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/minio/selfupdate"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -32,10 +31,8 @@ const (
 	// maxAttempts 是接口请求的最大尝试次数。校园网出口会偶发 504，
 	// 有限次重试后仍失败就直接报错，不会无限循环。
 	maxAttempts = 4
-	// swapAttempts 是替换新 exe 的整体重试次数，swapRenameRetries 是单步改名的重试次数。
-	// 杀毒软件常在 exe 落盘的瞬间扫描并短暂锁文件，改名会因此瞬间失败；
-	// 若不重试，selfupdate 会把旧文件改名后换不进新文件，目标位置直接空掉。
-	swapAttempts      = 3
+	// swapRenameRetries 是单步改名的重试次数。安全软件常在 exe 落盘的瞬间
+	// 扫描并短暂锁文件，改名会因此瞬间失败，重试几次即可绕过。
 	swapRenameRetries = 4
 	// updateDirectFile 是「更新时直连」开关的标记文件；不存在即走系统代理。
 	updateDirectFile = "update_direct"
@@ -322,90 +319,38 @@ func (a *App) applyGreen(info UpdateInfo, emit progressEmitter) (string, error) 
 	}
 	log.Info("校验通过", "SHA256", want)
 
-	if err := a.commitGreen(data, got[:]); err != nil {
+	helper, err := stageGreen(data)
+	if err != nil {
 		return "", err
 	}
-	log.Info("替换完成，准备重启到新版本")
-	launchAfterExit()
-	return "更新完成，正在重启…", nil
+	log.Info("新版本已就绪，等待进程退出后替换", "脚本", helper)
+	launchHelperAfterExit(helper)
+	return "更新文件已就绪，正在退出并替换…", nil
 }
 
-// commitGreen 把内存里的新 exe 换到目标位置。
-// 每次尝试前先自愈上次残留（旧文件在 .old、目标位置空着），失败则间隔 1 秒重试。
-// 这是因为安全软件常在 exe 落盘瞬间锁文件导致改名失败，而 selfupdate 一旦
-// 把旧文件改名、又换不进新文件，目标位置就会凭空消失，程序再也起不来。
-func (a *App) commitGreen(data, sum []byte) error {
-	log := a.logger()
+// stageGreen 把新版本写成同目录的 .new 文件，并生成退出后替换的脚本。
+// 运行中的 exe 不能被同名覆盖，先落盘再退出替换，任何一步失败旧版本都完好。
+func stageGreen(data []byte) (string, error) {
 	target, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("获取程序路径失败: %v", err)
+		return "", fmt.Errorf("获取程序路径失败: %v", err)
 	}
-
-	// 预检：先做一次「移走再移回」的无害试探，确认安全软件允许操作该
-	// 文件名。被拦截时旧文件原封不动地留在目标位置——这是防止
-	// 「更新失败后 easynet.exe 凭空消失、程序再也起不来」的关键防线。
-	if err := probeSwap(target); err != nil {
-		log.Error("自动更新被安全软件拦截（预检未通过，当前版本未改动）",
-			"err", err, "目录", filepath.Dir(target),
-			"指引", "请将该目录加入 360 等安全软件的信任区后重试")
-		return fmt.Errorf("自动更新被安全软件拦截（当前版本未改动）。"+
-			"请将目录 %s 加入安全软件信任区后重试；或将 %s 重命名为 easynet.exe 手动完成更新",
-			filepath.Dir(target), filepath.Join(filepath.Dir(target), ".easynet.exe.new"))
+	neu, _ := updatePaths(target)
+	if err := os.Remove(neu); err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("清理上次更新残留失败: %v", err)
 	}
-
-	var lastErr error
-	for attempt := 1; attempt <= swapAttempts; attempt++ {
-		if attempt > 1 {
-			log.Warn("替换新版本失败，稍后重试", "第几次", attempt, "已重试", attempt-1, "err", lastErr)
-			time.Sleep(time.Second)
-		}
-		healUpdateState(log, target)
-		if err := selfupdate.Apply(bytes.NewReader(data), selfupdate.Options{
-			Checksum:   sum,
-			TargetPath: target,
-		}); err == nil {
-			return nil
-		} else {
-			lastErr = err
-			log.Error("替换新版本失败", "第几次", attempt, "err", err, "目录状态", updateState(target))
-			// 明确的安全软件拦截：重试必然同样被拒，立即停止并给出人工出路。
-			if isAccessDenied(err) {
-				break
-			}
-		}
+	if err := os.WriteFile(neu, data, 0o755); err != nil {
+		return "", fmt.Errorf("写入新版本失败（当前版本未改动）: %v", err)
 	}
-	// 重试用尽后再自愈一次，保证旧版本仍然可用，并把现场状态写进日志。
-	healUpdateState(log, target)
-	log.Error("替换新版本失败，重试已用尽", "重试次数", swapAttempts, "err", lastErr, "目录状态", updateState(target))
-
-	// 生成一键完成脚本：360 允许用户手动确认的操作，双击脚本即可收尾。
+	if st, err := os.Stat(neu); err != nil || st.Size() != int64(len(data)) {
+		return "", fmt.Errorf("新版本写入不完整（当前版本未改动）")
+	}
 	helper := writeUpdateHelper(filepath.Dir(target))
-	msg := fmt.Sprintf("替换新版本失败：%v。", lastErr)
-	if fileExists(filepath.Join(filepath.Dir(target), ".easynet.exe.new")) {
-		if helper != "" {
-			msg += fmt.Sprintf("已生成一键完成脚本 %s，双击运行并在安全软件弹窗中点「允许」即可完成更新；"+
-				"也可手动将 .easynet.exe.new 重命名为 easynet.exe。", helper)
-		} else {
-			msg += "请手动将同目录下的 .easynet.exe.new 重命名为 easynet.exe 完成更新。"
-		}
+	if helper == "" {
+		return "", fmt.Errorf("无法生成更新脚本（当前版本未改动），请手动下载并用 %s 替换 easynet.exe",
+			filepath.Base(neu))
 	}
-	return errors.New(msg)
-}
-
-// probeSwap 做一次无害的「移走再移回」试探，验证安全软件是否允许
-// 对该文件名的改名操作。任一步失败都尽力把文件放回目标位置。
-func probeSwap(target string) error {
-	_, old := updatePaths(target)
-	probe := old + ".probe"
-	_ = os.Remove(probe) // 清掉可能的陈年残留
-	if err := os.Rename(target, probe); err != nil {
-		return err
-	}
-	if err := os.Rename(probe, target); err != nil {
-		// 回滚也失败：文件暂存在 probe 名下，如实上报（概率极低）。
-		return fmt.Errorf("预检回滚失败（文件暂名为 %s）: %w", probe, err)
-	}
-	return nil
+	return helper, nil
 }
 
 // isAccessDenied 判断错误是否为安全软件/权限拦截（Windows: Access is denied）。
@@ -421,24 +366,37 @@ func isAccessDenied(err error) bool {
 		strings.Contains(msg, "拒绝访问")
 }
 
-// writeUpdateHelper 生成一键完成更新的批处理脚本，返回其路径（失败返回空）。
-// 脚本幂等：先尝试恢复缺失的目标，再把新文件就位。
+// writeUpdateHelper 生成退出后替换的批处理脚本，返回其路径（失败返回空）。
+// 脚本先等旧进程退出，再把 .new 换成主程序；任何一步失败都恢复旧版本。
 func writeUpdateHelper(dir string) string {
 	script := `@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-if not exist easynet.exe if exist .easynet.exe.old ren .easynet.exe.old easynet.exe
-if exist .easynet.exe.new (
-  if exist easynet.exe ren easynet.exe .easynet.exe.superseded
-  ren .easynet.exe.new easynet.exe
+rem 等待旧进程（含守护）退出，最多 60 秒
+for /l %%i in (1,1,60) do (
+  tasklist /fi "imagename eq easynet.exe" 2>nul | find /i "easynet.exe" >nul
+  if errorlevel 1 goto replace
+  ping -n 2 127.0.0.1 >nul
 )
-if exist easynet.exe (
-  echo 更新完成，正在启动新版本…
-  start "" easynet.exe
-) else (
-  echo 未能完成替换，请检查安全软件是否拦截，或手动重命名文件。
+:replace
+if not exist ".easynet.exe.new" goto restore
+if not exist "easynet.exe" if exist ".easynet.exe.old.probe" ren ".easynet.exe.old.probe" "easynet.exe"
+if not exist "easynet.exe" if exist ".easynet.exe.old" ren ".easynet.exe.old" "easynet.exe"
+if exist "easynet.exe" (
+  if exist ".easynet.exe.old" del /f /q ".easynet.exe.old" >nul 2>nul
+  ren "easynet.exe" ".easynet.exe.old"
 )
-pause
+ren ".easynet.exe.new" "easynet.exe"
+if exist "easynet.exe" (
+  del /f /q ".easynet.exe.old" >nul 2>nul
+  start "" "easynet.exe"
+  exit /b 0
+)
+:restore
+if not exist "easynet.exe" if exist ".easynet.exe.old" ren ".easynet.exe.old" "easynet.exe"
+if not exist "easynet.exe" if exist ".easynet.exe.old.probe" ren ".easynet.exe.old.probe" "easynet.exe"
+if exist "easynet.exe" start "" "easynet.exe"
+exit /b 1
 `
 	path := filepath.Join(dir, "update-helper.bat")
 	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
@@ -461,19 +419,24 @@ func cleanupUpdateResidue() {
 // cleanupUpdateResidueAt 清理 target 对应的旧版本备份，返回是否已删除。
 // 目标文件缺失时不动手：那说明上次替换失败，备份是唯一的可执行文件。
 func cleanupUpdateResidueAt(target string) bool {
-	if !fileExists(target) {
+	// 目标缺失说明上次更新中途失败：先恢复，否则程序下次启动不了。
+	if !fileExists(target) && !healUpdateState(nil, target) {
 		return false
 	}
 	_, old := updatePaths(target)
-	if !fileExists(old) {
-		return false
+	removed := false
+	for _, p := range []string{old, old + ".probe"} {
+		if !fileExists(p) {
+			continue
+		}
+		if err := os.Remove(p); err == nil {
+			removed = true
+		} else {
+			// 安全软件扫描常在这个瞬间占用旧文件，隔几秒再试一次，不阻塞启动。
+			time.AfterFunc(3*time.Second, func() { _ = os.Remove(p) })
+		}
 	}
-	if err := os.Remove(old); err == nil {
-		return true
-	}
-	// 安全软件扫描常在这个瞬间占用旧文件，隔几秒再试一次，不阻塞启动。
-	time.AfterFunc(3*time.Second, func() { _ = os.Remove(old) })
-	return false
+	return removed
 }
 
 // updatePaths 返回与 target 同目录的新文件、备份文件路径（与 selfupdate 约定一致）。
@@ -503,28 +466,32 @@ func healUpdateState(log *slog.Logger, target string) bool {
 		return false
 	}
 	_, old := updatePaths(target)
-	if !fileExists(old) {
-		return false
-	}
-	if log != nil {
-		log.Warn("检测到上次更新残留（目标文件缺失），恢复旧版本", "状态", updateState(target))
-	}
-	if err := renameWithRetry(old, target); err != nil {
-		if log != nil {
-			if isAccessDenied(err) {
-				log.Error("恢复旧版本被安全软件拦截——程序文件当前缺失，下次将无法启动！",
-					"err", err, "来源", old, "目标", target,
-					"指引", "请手动将 "+old+" 重命名为 "+target+"，或双击同目录 update-helper.bat")
-			} else {
-				log.Error("恢复旧版本文件失败", "err", err, "来源", old, "目标", target)
-			}
+	// 旧版本可能留在 .old（替换中失败），也可能留在 .old.probe（改名预检失败）。
+	for _, src := range []string{old, old + ".probe"} {
+		if !fileExists(src) {
+			continue
 		}
-		return false
+		if log != nil {
+			log.Warn("检测到更新残留（目标文件缺失），恢复旧版本", "来源", src, "状态", updateState(target))
+		}
+		if err := renameWithRetry(src, target); err != nil {
+			if log != nil {
+				if isAccessDenied(err) {
+					log.Error("恢复旧版本被安全软件拦截——程序文件当前缺失，下次将无法启动！",
+						"err", err, "来源", src, "目标", target,
+						"指引", "请手动将 "+src+" 重命名为 "+target+"，或双击同目录 update-helper.bat")
+				} else {
+					log.Error("恢复旧版本文件失败", "err", err, "来源", src, "目标", target)
+				}
+			}
+			continue
+		}
+		if log != nil {
+			log.Info("已恢复旧版本文件", "来源", src, "target", target)
+		}
+		return true
 	}
-	if log != nil {
-		log.Info("已恢复旧版本文件", "target", target)
-	}
-	return true
+	return false
 }
 
 // renameWithRetry 改名带有限次重试：安全软件的扫描锁窗口通常只有几百毫秒。

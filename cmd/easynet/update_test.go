@@ -79,38 +79,28 @@ func TestCleanupUpdateResidueRemovesBackup(t *testing.T) {
 	}
 }
 
-// 目标文件缺失时，备份是唯一的可执行文件，绝不能清掉。
-func TestCleanupUpdateResidueKeepsOnlyCopy(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "easynet.exe")
-	_, old := updatePaths(target)
-	if err := os.WriteFile(old, []byte("only"), 0o644); err != nil {
-		t.Fatalf("写备份失败: %v", err)
-	}
+// 目标文件缺失时，备份是唯一的可执行文件：应恢复到目标位置，而不是删掉。
+func TestCleanupUpdateResidueRestoresMissingTarget(t *testing.T) {
+	for _, suffix := range []string{"", ".probe"} {
+		t.Run("suffix="+suffix, func(t *testing.T) {
+			dir := t.TempDir()
+			target := filepath.Join(dir, "easynet.exe")
+			_, old := updatePaths(target)
+			src := old + suffix
+			if err := os.WriteFile(src, []byte("only"), 0o644); err != nil {
+				t.Fatalf("写备份失败: %v", err)
+			}
 
-	if cleanupUpdateResidueAt(target) {
-		t.Fatal("目标缺失时不应报告删除")
-	}
-	if !fileExists(old) {
-		t.Fatal("唯一的可执行文件被误删")
-	}
-}
-
-func TestProbeSwapRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "easynet.exe")
-	if err := os.WriteFile(target, []byte("MZ fake"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := probeSwap(target); err != nil {
-		t.Fatalf("正常目录预检应通过: %v", err)
-	}
-	// 预检后文件必须原样回到目标位置
-	if raw, err := os.ReadFile(target); err != nil || string(raw) != "MZ fake" {
-		t.Fatalf("预检后目标文件应完好: %v", err)
-	}
-	// 目标缺失时预检应报错（且不产生 probe 残留）
-	if err := probeSwap(filepath.Join(dir, "missing.exe")); err == nil {
-		t.Fatal("缺失目标应报错")
+			cleanupUpdateResidueAt(target)
+			if !fileExists(target) {
+				t.Fatal("目标文件应被恢复")
+			}
+			if fileExists(src) {
+				t.Fatal("恢复后不应留下残留")
+			}
+			if raw, err := os.ReadFile(target); err != nil || string(raw) != "only" {
+				t.Fatalf("恢复内容错误: %v", err)
+			}
+		})
 	}
 }

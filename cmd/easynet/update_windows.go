@@ -90,15 +90,11 @@ func stopDaemonForUpdate() {
 	time.Sleep(1200 * time.Millisecond)
 }
 
-// launchAfterExit 延迟启动新版本，确保当前进程先释放单实例互斥体。
-func launchAfterExit() {
-	exe, err := os.Executable()
-	if err != nil {
-		return
-	}
-	line := fmt.Sprintf(`ping -n 3 127.0.0.1 >nul & start "" "%s"`, exe)
-	cmd := exec.Command("cmd", "/c", line)
+// launchHelperAfterExit 以最小化窗口运行更新脚本，由脚本等本进程退出后
+// 把 .new 换成主程序再启动，失败则保留旧版本。
+func launchHelperAfterExit(script string) {
+	cmd := exec.Command("cmd", "/c", "start", "", "/min", script)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	_ = cmd.Start()
-	time.AfterFunc(300*time.Millisecond, func() { os.Exit(0) })
+	time.AfterFunc(500*time.Millisecond, func() { os.Exit(0) })
 }
